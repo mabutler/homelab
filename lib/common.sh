@@ -507,6 +507,49 @@ unit_reload() {
 }
 
 # ---------------------------------------------------------------------------
+# Check harness
+# ---------------------------------------------------------------------------
+# Used by tools/verify.sh. Three outcomes, not two: "pending" is for a check
+# belonging to a bootstrap stage that has not run yet, which is not the same
+# thing as a failure and must not be reported as one.
+CHECKS_PASSED=0
+CHECKS_FAILED=0
+CHECKS_PENDING=0
+
+section() {
+    printf '\n%s%s%s\n' "$_C_BLUE" "$1" "$_C_RESET" >&2
+}
+
+# check <description> <command...>
+# Output is swallowed; the description is the report.
+check() {
+    local desc="$1"
+    shift
+    if "$@" >/dev/null 2>&1; then
+        printf '  %sok%s    %s\n' "$_C_GREEN" "$_C_RESET" "$desc" >&2
+        CHECKS_PASSED=$(( CHECKS_PASSED + 1 ))
+    else
+        printf '  %sFAIL%s  %s\n' "$_C_RED" "$_C_RESET" "$desc" >&2
+        CHECKS_FAILED=$(( CHECKS_FAILED + 1 ))
+    fi
+}
+
+# pending <description> — a stage that has not been run yet.
+pending() {
+    printf '  %s--    %s%s\n' "$_C_DIM" "$1" "$_C_RESET" >&2
+    CHECKS_PENDING=$(( CHECKS_PENDING + 1 ))
+}
+
+checks_summary() {
+    printf '\n' >&2
+    if (( CHECKS_FAILED > 0 )); then
+        err "$CHECKS_PASSED passed, $CHECKS_FAILED FAILED, $CHECKS_PENDING pending"
+        return 1
+    fi
+    ok "$CHECKS_PASSED passed, 0 failed, $CHECKS_PENDING pending"
+}
+
+# ---------------------------------------------------------------------------
 # Installing configuration from files/
 # ---------------------------------------------------------------------------
 # Convention 1: configuration lives in files/ and is installed verbatim.
