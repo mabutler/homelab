@@ -236,9 +236,13 @@ until chr passwd "$ADMIN_USER"; do
     warn "passwd failed — try again"
 done
 
-# "P" means a usable password is set; "L" locked, "NP" none. Without one there
-# is no way into the machine at a keyboard.
-pwstate="$(chr passwd -S "$ADMIN_USER" | awk '"'"'{print $2}'"'"')"
+# `passwd -S` prints "<user> <state> <date> …". "P" means a usable password is
+# set; "L" is locked and "NP" is none, and without one there is no way into the
+# machine at a keyboard. Parsed with parameter expansion rather than awk, to
+# keep a nested-quoting hazard out of a line that only ever runs once.
+pwline="$(chr passwd -S "$ADMIN_USER")"
+pwstate="${pwline#* }"      # drop the username
+pwstate="${pwstate%% *}"    # keep the state field
 [[ "$pwstate" == "P" ]] \
     || die "$ADMIN_USER has no usable password (state: $pwstate) — console recovery would be impossible"
 ok "console login for $ADMIN_USER is set"
