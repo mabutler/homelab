@@ -1,0 +1,116 @@
+#!/usr/bin/env bash
+# run.sh — run the bootstrap/ scripts, in order, on the installed system.
+#
+# bootstrap/ is idempotent by contract: running this twice produces no changes
+# on the second pass. install/ is the destructive half and is NOT run from
+# here — those scripts are invoked one at a time, from the live ISO, by hand.
+
+source "$(dirname -- "${BASH_SOURCE[0]}")/lib/common.sh"
+
+usage() {
+    cat <<'EOF'
+usage: run.sh [options]
+
+  --list            show the bootstrap scripts in order and exit
+  --only NN[,NN]    run only these numbered steps (e.g. --only 40,50)
+  --from NN         start at this step and run everything after it
+  --to NN           stop after this step
+  --dry-run         print what would change without changing it
+  -v, --verbose     report no-op steps as well as changes
+  -h, --help        this
+
+Steps are the two-digit prefixes of the scripts in bootstrap/.
+A bare `run.sh` runs all of them in order.
+EOF
+}
+
+main() {
+    local list=0 only='' from='' to=''
+
+    while (( $# )); do
+        case "$1" in
+            --list)      list=1 ;;
+            --only)      only="${2:?--only needs a step number}"; shift ;;
+            --only=*)    only="${1#*=}" ;;
+            --from)      from="${2:?--from needs a step number}"; shift ;;
+            --from=*)    from="${1#*=}" ;;
+            --to)        to="${2:?--to needs a step number}"; shift ;;
+            --to=*)      to="${1#*=}" ;;
+            --dry-run)   DRY_RUN=1 ;;
+            -v|--verbose) VERBOSE=1 ;;
+            -h|--help)   usage; return 0 ;;
+            *)           usage >&2; die "unknown argument: $1" ;;
+        esac
+        shift
+    done
+    export DRY_RUN VERBOSE
+
+    local -a scripts=()
+    local s
+    for s in "$REPO_ROOT"/bootstrap/[0-9][0-9]-*.sh; do
+        [[ -f "$s" ]] && scripts+=("$s")
+    done
+    (( ${#scripts[@]} > 0 )) || die "no scripts found in $REPO_ROOT/bootstrap/"
+
+    if (( list )); then
+        for s in "${scripts[@]}"; do
+            printf '%s  %s\n' "$(step_of "$s")" "$(basename -- "$s")"
+        done
+        return 0
+    fi
+
+    # Fail fast on configuration before touching the machine, rather than
+    # three steps in. Each script re-loads these itself (convention 4); this
+    # is the early check, not the load that matters.
+    require_root
+    require_installed_system
+    load_host_conf
+    load_drives_conf
+
+    local -a selected=()
+    for s in "${scripts[@]}"; do
+        local n
+        n="$(step_of "$s")"
+        [[ -n "$only" ]] && ! in_csv "$n" "$only" && continue
+        [[ -n "$from" ]] && (( 10#$n < 10#$from )) && continue
+        [[ -n "$to"   ]] && (( 10#$n > 10#$to   )) && continue
+        selected+=("$s")
+    done
+    (( ${#selected[@]} > 0 )) || die "no bootstrap steps matched the given filters"
+
+    [[ -n "$DRY_RUN" ]] && warn "dry run — nothing will be changed"
+
+    local failed=''
+    for s in "${selected[@]}"; do
+        log "── $(basename -- "$s")"
+        if ! bash -- "$s"; then
+            failed="$(basename -- "$s")"
+            break
+        fi
+    done
+
+    if [[ -n "$failed" ]]; then
+        die "$failed failed — stopping here, nothing after it ran"
+    fi
+
+    ok "bootstrap complete (${#selected[@]} step(s))"
+    log "next: tools/verify.sh"
+}
+
+step_of() {
+    local b
+    b="$(basename -- "$1")"
+    printf '%s\n' "${b:0:2}"
+}
+
+# in_csv <needle> <a,b,c>
+in_csv() {
+    local needle="$1" list="$2" item
+    local IFS=','
+    for item in $list; do
+        [[ "$item" == "$needle" ]] && return 0
+    done
+    return 1
+}
+
+main "$@"

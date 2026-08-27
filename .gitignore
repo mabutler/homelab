@@ -1,0 +1,27 @@
+# The only per-machine file. Restore it from the password manager, never
+# from git — see host.conf.example.
+/host.conf
+
+# Container secrets (later stages). Templates are committed, real files aren't.
+*.env
+!*.env.example
+
+# Loose fact captures from a live ISO. The curated baseline lives in
+# docs/ instead; this pattern is here so a stray dump can't be committed
+# by reflex.
+/homelab-facts.txt
+/*.facts.txt
+
+# Private keys have no business here, ever. files/authorized_keys is a
+# public key and IS committed.
+id_*
+!id_*.pub
+*.pem
+*.key
+
+# Editor and OS noise
+*~
+*.swp
+*.swo
+.DS_Store
+Thumbs.db

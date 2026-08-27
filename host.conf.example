@@ -1,0 +1,47 @@
+# host.conf — the only per-machine file in this repository.
+#
+#   cp host.conf.example host.conf   and fill in the blanks.
+#
+# host.conf is gitignored. STORE THE REAL FILE IN YOUR PASSWORD MANAGER:
+# a rebuild can restore this repository, but not this machine's identity.
+#
+# Sourced as shell. No spaces around '='; quote anything with spaces.
+# A second host is a second host.conf, not a second repository.
+
+# --- identity --------------------------------------------------------------
+
+# The hostname of the machine being built. Named TARGET_HOSTNAME rather than
+# HOSTNAME because bash sets HOSTNAME itself, and on the live ISO it is
+# "archiso" — a collision that would be silent and confusing.
+TARGET_HOSTNAME=""              # e.g. fidelacchius
+
+# Non-root login. Owns the public key in files/authorized_keys, and is added
+# to wheel. Root SSH login is disabled, so this account is how you get in.
+ADMIN_USER=""                   # e.g. matt
+
+TIMEZONE=""                     # timedatectl list-timezones   e.g. America/New_York
+LOCALE="en_US.UTF-8"
+KEYMAP="us"
+
+# --- storage ---------------------------------------------------------------
+
+# Size of the Btrfs root partition. The remainder of the SSD becomes the ext4
+# /opt/appdata partition. Accepted by sgdisk, so use GiB/MiB, not GB/MB.
+ROOT_SIZE="50GiB"
+
+# --- alerting --------------------------------------------------------------
+
+NTFY_SERVER="https://ntfy.sh"
+
+# Long random string. On public ntfy.sh the topic IS the credential: anyone
+# who knows it can read your alerts and publish to them. Generate with
+#   head -c 24 /dev/urandom | base32 | tr -d '='
+NTFY_TOPIC=""
+
+# Healthchecks.io ping URLs — dead-man switches, so a timer that silently
+# stops firing is caught by absence rather than by you noticing months later.
+# Leave any of these blank to skip wiring that check.
+HC_HEARTBEAT_URL=""             # hourly
+HC_SNAPRAID_SYNC_URL=""         # nightly
+HC_SNAPRAID_SCRUB_URL=""        # weekly
+HC_SMART_URL=""                 # weekly SMART attribute snapshot
