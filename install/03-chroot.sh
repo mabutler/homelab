@@ -35,27 +35,36 @@ ssd_dev="$(resolve_serial "$ssd_serial")"
 # chr <cmd>... — run inside the target.
 chr() { arch-chroot "$TARGET_MNT" "$@"; }
 
-# link_in_target <target> <linkpath> — symlink inside the chroot, idempotently.
+# link_in_target <target> <linkpath> — create a symlink in the target.
 #
-# Replaces rather than overwrites. `ln -sf` refuses with "are the same file"
-# whenever the destination already resolves to the target — including when the
-# existing link spells the same path differently, e.g. an absolute
-# /run/systemd/resolve/stub-resolv.conf against the relative ../run/... form
-# that systemd ships. Comparing link text does not catch that; removing the
-# link first sidesteps the identity check entirely.
+# Deliberately NOT run through chr(). arch-chroot bind-mounts the host's
+# /etc/resolv.conf into the target for the duration of every call, so anything
+# chr() does to that path acts on the live ISO's file: `rm` fails with "device
+# or resource busy", and `ln -sf` refuses with "are the same file" because both
+# paths reach one inode through the bind mount.
 #
-# Reports what the link used to be, so a surprise here is visible rather than
-# silently normalised away.
+# From outside there is no such mount between calls, and a symlink written here
+# is byte-identical to one written inside. The link text is interpreted from
+# within the target when the machine boots, so an absolute target like
+# /usr/share/zoneinfo/... is correct even though it points somewhere else on
+# the ISO.
 link_in_target() {
-    local target="$1" link="$2" current
-    current="$(chr readlink -- "$link" 2>/dev/null || true)"
+    local target="$1" link="$2"
+    local path="$TARGET_MNT$link" current
+
+    if mountpoint -q -- "$path" 2>/dev/null; then
+        die "$path is a mount point — a leaked arch-chroot bind mount. umount it and re-run."
+    fi
+
+    current="$(readlink -- "$path" 2>/dev/null || true)"
     if [[ "$current" == "$target" ]]; then
         dbg "$link already -> $target"
         return 0
     fi
+
     log "link $link -> $target${current:+  (was: $current)}"
-    chr rm -f -- "$link"
-    chr ln -sT -- "$target" "$link"
+    rm -f -- "$path"
+    ln -sT -- "$target" "$path"
 }
 
 # --- locale, time, identity ------------------------------------------------
@@ -166,6 +175,10 @@ c_key_present()   { grep -q '^ssh-' "$AUTHKEYS"; }
 c_sshd_enabled()  { chr systemctl is-enabled sshd.service >/dev/null; }
 c_netd_enabled()  { chr systemctl is-enabled systemd-networkd.service >/dev/null; }
 c_network_file()  { [[ -f "$TARGET_MNT/etc/systemd/network/20-wired.network" ]]; }
+# arch-chroot leaves an empty regular file here if it ever had to create one,
+# and systemd's tmpfiles rule will not replace an existing file — that boots to
+# no DNS at all.
+c_resolv_link()   { [[ "$(readlink "$TARGET_MNT/etc/resolv.conf")" == ../run/systemd/resolve/stub-resolv.conf ]]; }
 c_fstab_labels()  { ! grep -qE '^/dev/(sd|nvme|hd)' "$TARGET_MNT/etc/fstab"; }
 c_grubcfg()       { [[ -s "$GRUBCFG" ]]; }
 # Fixed-string, and with the closing quote of the menuentry title included:
@@ -187,6 +200,7 @@ check "authorized_keys holds a public key"     c_key_present
 check "sshd is enabled"                        c_sshd_enabled
 check "systemd-networkd is enabled"            c_netd_enabled
 check "a .network file is present"             c_network_file
+check "resolv.conf points at the resolved stub" c_resolv_link
 check "fstab uses labels, not device paths"    c_fstab_labels
 check "grub.cfg was generated"                 c_grubcfg
 check "LTS boot entry exists"                  c_lts_entry
