@@ -33,12 +33,26 @@ findmnt -M "$TARGET_MNT/opt/appdata" >/dev/null \
     || die "$TARGET_MNT/opt/appdata is not mounted — 01-partition.sh did not finish"
 
 # And that the thing mounted there is the drive drives.conf calls the OS disk.
+#
+# findmnt appends the subvolume to the source for btrfs — "/dev/sdi2[/@]" —
+# so the bracket has to come off before this is a device path at all. The
+# parent disk then comes from lsblk rather than from a string prefix, because
+# "/dev/sda" prefixes "/dev/sdaa" and one day that will matter.
 ssd_serial="$(serials_with_role ssd)"
 ssd_dev="$(resolve_serial "$ssd_serial")"
-[[ "$(readlink -f -- "$root_src")" == "$ssd_dev"* ]] \
-    || die "$TARGET_MNT is backed by $root_src, which is not on $ssd_dev ($ssd_serial)"
 
-ok "target verified: $root_src on $TARGET_MNT (subvol=@)"
+root_part="$(readlink -f -- "${root_src%%\[*}")"
+root_parent="$(lsblk -no PKNAME -- "$root_part" 2>/dev/null | head -1 | tr -d ' ')"
+if [[ -n "$root_parent" ]]; then
+    root_disk="/dev/$root_parent"
+else
+    root_disk="$root_part"      # mounted on a whole disk, no partition table
+fi
+
+[[ "$root_disk" == "$ssd_dev" ]] \
+    || die "$TARGET_MNT is backed by $root_part on $root_disk, but drives.conf says the OS drive is $ssd_dev ($ssd_serial)"
+
+ok "target verified: $root_part on $ssd_dev, subvol=@"
 
 # --- packages --------------------------------------------------------------
 # Minimal on purpose. Applications arrive as containers, so the host stays
