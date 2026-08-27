@@ -506,6 +506,24 @@ unit_reload() {
     run systemctl daemon-reload
 }
 
+# grep_output <extended-regex> <command...>
+#
+# Run the command, capture its output, then match — never `cmd | grep -q`.
+#
+# Under `set -o pipefail` that pipeline is a trap: grep -q exits at the first
+# match and closes the pipe, the producer dies on SIGPIPE with status 141, and
+# pipefail reports the pipeline as FAILED precisely because the match
+# succeeded. It only bites when the producer outputs more than grep reads, so
+# it passes on short output and fails on long — which is worse than failing
+# consistently. Matching is case-insensitive: tools vary on keyword case.
+grep_output() {
+    local pattern="$1"
+    shift
+    local out
+    out="$("$@" 2>/dev/null || true)"
+    grep -qiE -- "$pattern" <<<"$out"
+}
+
 # ---------------------------------------------------------------------------
 # Check harness
 # ---------------------------------------------------------------------------

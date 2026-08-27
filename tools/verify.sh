@@ -58,7 +58,7 @@ c_appdata_mnt()  { findmnt -no TARGET /opt/appdata; }
 c_appdata_fs()   { [[ "$(findmnt -no FSTYPE /opt/appdata)" == ext4 ]]; }
 c_appdata_label(){ [[ "$(blkid -s LABEL -o value "$(findmnt -no SOURCE /opt/appdata)")" == APPDATA ]]; }
 c_fstab_labels() { ! grep -qE '^/dev/(sd|nvme|hd)' /etc/fstab; }
-subvol_mounted() { findmnt -no OPTIONS "$1" | grep -q "subvol=/$2"; }
+subvol_mounted() { [[ "$(findmnt -no OPTIONS "$1")" == *"subvol=/$2"* ]]; }
 c_home()         { subvol_mounted /home @home; }
 c_varlog()       { subvol_mounted /var/log @var_log; }
 c_containers()   { subvol_mounted /var/lib/containers @containers; }
@@ -90,19 +90,16 @@ fi
 section "Access"
 
 c_sshd_active()  { systemctl is-active --quiet sshd.service; }
-# sshd -T keyword case varies between OpenSSH versions — this host prints
-# "PasswordAuthentication no", older ones lowercase it. Match case- and
-# whitespace-insensitively, but keep the value anchored so a permissive
-# setting (yes, prohibit-password) still fails.
-sshd_effective() { sshd -T 2>/dev/null; }
-c_no_passwords() { sshd_effective | grep -qiE '^passwordauthentication[[:space:]]+no$'; }
-c_no_root_ssh()  { sshd_effective | grep -qiE '^permitrootlogin[[:space:]]+no$'; }
-c_pubkey_on()    { sshd_effective | grep -qiE '^pubkeyauthentication[[:space:]]+yes$'; }
+# Value anchored so a permissive setting (yes, prohibit-password) still fails.
+# grep_output rather than a pipe — see its comment in lib/common.sh.
+c_no_passwords() { grep_output '^passwordauthentication[[:space:]]+no$'  sshd -T; }
+c_no_root_ssh()  { grep_output '^permitrootlogin[[:space:]]+no$'         sshd -T; }
+c_pubkey_on()    { grep_output '^pubkeyauthentication[[:space:]]+yes$'   sshd -T; }
 c_hostkeys()     { ls /etc/ssh/ssh_host_*_key >/dev/null 2>&1; }
 c_key_perms()    { [[ "$(stat -c '%a %U' "/home/$ADMIN_USER/.ssh/authorized_keys")" == "600 $ADMIN_USER" ]]; }
 c_ssh_dir()      { [[ "$(stat -c '%a %U' "/home/$ADMIN_USER/.ssh")" == "700 $ADMIN_USER" ]]; }
-c_in_wheel()     { id -nG "$ADMIN_USER" | grep -qw wheel; }
-c_sudo_nopass()  { sudo -n -l -U "$ADMIN_USER" 2>/dev/null | grep -q NOPASSWD; }
+c_in_wheel()     { [[ " $(id -nG "$ADMIN_USER") " == *" wheel "* ]]; }
+c_sudo_nopass()  { grep_output 'NOPASSWD' sudo -n -l -U "$ADMIN_USER"; }
 c_root_locked()  { local st; st="$(passwd -S root)"; st="${st#* }"; [[ "${st%% *}" == "L" ]]; }
 c_networkd()     { systemctl is-active --quiet systemd-networkd.service; }
 c_resolved()     { systemctl is-active --quiet systemd-resolved.service; }
@@ -125,7 +122,7 @@ section "Identity"
 
 c_hostname() { [[ "$(hostnamectl --static)" == "$TARGET_HOSTNAME" ]]; }
 c_timezone() { [[ "$(timedatectl show -p Timezone --value)" == "$TIMEZONE" ]]; }
-c_locale()   { localectl status | grep -q "$LOCALE"; }
+c_locale()   { [[ "$(localectl status)" == *"$LOCALE"* ]]; }
 
 check "hostname is $TARGET_HOSTNAME"                c_hostname
 check "timezone is $TIMEZONE"                       c_timezone
@@ -148,7 +145,7 @@ check "/opt/stack has no uncommitted changes"       c_stack_clean
 
 section "Base tuning — bootstrap/10-base.sh"
 if have zramctl && [[ -f /etc/systemd/zram-generator.conf ]]; then
-    c_zram()      { swapon --show=NAME --noheadings | grep -q zram; }
+    c_zram()      { grep_output 'zram' swapon --show=NAME --noheadings; }
     c_swappiness(){ [[ "$(sysctl -n vm.swappiness)" == 100 ]]; }
     c_journal()   { grep -qs '^SystemMaxUse=' /etc/systemd/journald.conf /etc/systemd/journald.conf.d/*.conf; }
     c_fstrim()    { systemctl is-enabled --quiet fstrim.timer; }
@@ -169,7 +166,7 @@ fi
 
 section "Snapshots — bootstrap/20-snapshots.sh"
 if have snapper; then
-    c_snapper_root(){ snapper list-configs | grep -qw root; }
+    c_snapper_root(){ grep_output '(^|[[:space:]])root([[:space:]]|$)' snapper list-configs; }
     c_snap_pac()    { pacman -Q snap-pac; }
     c_grub_btrfs()  { systemctl is-enabled --quiet grub-btrfsd.service; }
     check "snapper has a config for root"           c_snapper_root

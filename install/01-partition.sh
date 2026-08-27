@@ -38,7 +38,11 @@ for s in "${DRIVE_SERIALS[@]}"; do
 done
 
 # Nothing from the target may be mounted while we repartition it.
-if findmnt -rno SOURCE | grep -q "^${ssd_dev}"; then
+#
+# Not `findmnt | grep -q`: under pipefail, grep -q exits at the first match,
+# findmnt dies on SIGPIPE, and the pipeline returns 141 — so a match would read
+# as "no match" and this guard would fail OPEN on a destructive operation.
+if grep_output "^${ssd_dev}" findmnt -rno SOURCE; then
     die "$ssd_dev has mounted partitions — unmount them first (findmnt | grep $ssd_dev)"
 fi
 

@@ -177,12 +177,13 @@ c_sshd_parses()   { chr sshd -t; }
 # Valid syntax and effective config are different questions: `sshd -t` passes
 # on a file that is never read. Keyword case varies between OpenSSH versions,
 # so match case-insensitively with the value anchored.
-c_sshd_nopass()   { chr sshd -T 2>/dev/null | grep -qiE '^passwordauthentication[[:space:]]+no$'; }
-c_sshd_noroot()   { chr sshd -T 2>/dev/null | grep -qiE '^permitrootlogin[[:space:]]+no$'; }
+c_sshd_nopass()   { grep_output '^passwordauthentication[[:space:]]+no$' chr sshd -T; }
+c_sshd_noroot()   { grep_output '^permitrootlogin[[:space:]]+no$'        chr sshd -T; }
 c_sudoers()       { chr visudo -cf /etc/sudoers.d/10-wheel >/dev/null; }
 c_user_exists()   { chr id -u "$ADMIN_USER" >/dev/null 2>&1; }
-c_in_wheel()      { chr id -nG "$ADMIN_USER" | grep -qw wheel; }
-c_login_shell()   { chr getent passwd "$ADMIN_USER" | grep -qvE ':(/usr/bin/nologin|/bin/false)$'; }
+c_in_wheel()      { [[ " $(chr id -nG "$ADMIN_USER") " == *" wheel "* ]]; }
+c_login_shell()   { local e sh; e="$(chr getent passwd "$ADMIN_USER")"; sh="${e##*:}"
+                    [[ "$sh" != */nologin && "$sh" != */false ]]; }
 # stat has to run inside the target: the ISO has no passwd entry for the admin
 # user, so %U there reports UNKNOWN no matter how correct the ownership is.
 c_key_perms()     { [[ "$(chr stat -c '%a %U' "/home/$ADMIN_USER/.ssh/authorized_keys")" == "600 $ADMIN_USER" ]]; }
