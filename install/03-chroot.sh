@@ -113,6 +113,14 @@ install_file etc/systemd/network/20-wired.network
 grep -q '^Include /etc/ssh/sshd_config.d/\*\.conf' "$TARGET_MNT/etc/ssh/sshd_config" \
     || die "the target's sshd_config does not Include sshd_config.d — the hardening drop-in would be ignored"
 
+# A fresh pacstrap has no host keys; Arch generates them at first boot via
+# sshdgenkeys.service. Doing it now instead means `sshd -t` below is actually
+# able to validate the config — without keys it exits before parsing anything —
+# and the host is reachable the moment sshd starts rather than after keygen.
+# ssh-keygen -A only creates what is missing, so this is safe to repeat.
+log "generating SSH host keys"
+chr ssh-keygen -A
+
 chr systemctl enable sshd.service
 chr systemctl enable systemd-networkd.service
 chr systemctl enable systemd-resolved.service
@@ -170,7 +178,11 @@ c_sudoers()       { chr visudo -cf /etc/sudoers.d/10-wheel >/dev/null; }
 c_user_exists()   { chr id -u "$ADMIN_USER" >/dev/null 2>&1; }
 c_in_wheel()      { chr id -nG "$ADMIN_USER" | grep -qw wheel; }
 c_login_shell()   { chr getent passwd "$ADMIN_USER" | grep -qvE ':(/usr/bin/nologin|/bin/false)$'; }
-c_key_perms()     { [[ "$(stat -c '%a %U' "$AUTHKEYS")" == "600 $ADMIN_USER" ]]; }
+# stat has to run inside the target: the ISO has no passwd entry for the admin
+# user, so %U there reports UNKNOWN no matter how correct the ownership is.
+c_key_perms()     { [[ "$(chr stat -c '%a %U' "/home/$ADMIN_USER/.ssh/authorized_keys")" == "600 $ADMIN_USER" ]]; }
+c_ssh_dir()       { [[ "$(chr stat -c '%a %U' "/home/$ADMIN_USER/.ssh")" == "700 $ADMIN_USER" ]]; }
+c_hostkeys()      { chr sh -c 'ls /etc/ssh/ssh_host_*_key >/dev/null 2>&1'; }
 c_key_present()   { grep -q '^ssh-' "$AUTHKEYS"; }
 c_sshd_enabled()  { chr systemctl is-enabled sshd.service >/dev/null; }
 c_netd_enabled()  { chr systemctl is-enabled systemd-networkd.service >/dev/null; }
@@ -197,6 +209,8 @@ check "$ADMIN_USER is in wheel"                c_in_wheel
 check "$ADMIN_USER has a login shell"          c_login_shell
 check "authorized_keys is 0600, owned by $ADMIN_USER" c_key_perms
 check "authorized_keys holds a public key"     c_key_present
+check ".ssh is 0700, owned by $ADMIN_USER"     c_ssh_dir
+check "host keys exist"                        c_hostkeys
 check "sshd is enabled"                        c_sshd_enabled
 check "systemd-networkd is enabled"            c_netd_enabled
 check "a .network file is present"             c_network_file
