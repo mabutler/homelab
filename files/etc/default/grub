@@ -1,0 +1,21 @@
+# GRUB_SAVEDEFAULT is deliberately absent. Writing the saved entry back to a
+# Btrfs root fails on sparse-file support, so the default is pinned by name
+# instead. 03-chroot.sh asserts that this entry actually exists in the
+# generated grub.cfg rather than trusting the string to keep matching.
+GRUB_DEFAULT="Advanced options for Arch Linux>Arch Linux, with Linux linux-lts"
+
+# The submenu must stay enabled or the entry above has no path to match.
+GRUB_DISABLE_SUBMENU=n
+GRUB_DISTRIBUTOR="Arch"
+
+GRUB_TIMEOUT=5
+GRUB_TIMEOUT_STYLE=menu
+
+GRUB_CMDLINE_LINUX_DEFAULT="loglevel=3"
+GRUB_CMDLINE_LINUX=""
+
+GRUB_PRELOAD_MODULES="part_gpt part_msdos"
+GRUB_TERMINAL_INPUT=console
+GRUB_GFXMODE=auto
+GRUB_GFXPAYLOAD_LINUX=keep
+GRUB_DISABLE_RECOVERY=true

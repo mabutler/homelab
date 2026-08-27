@@ -1,0 +1,11 @@
+# Matches any wired interface rather than naming enp4s0, so moving the drives
+# into a different chassis does not leave the host unreachable.
+
+[Match]
+Name=en*
+
+[Network]
+DHCP=yes
+
+[DHCPv4]
+UseDomains=yes

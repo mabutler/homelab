@@ -1,0 +1,11 @@
+# No password for sudo.
+#
+# The account's password is not a meaningful control here: sshd is key-only, so
+# anyone typing this already holds the private key, and re-typing a password
+# behind that adds friction rather than security.
+#
+# It does mean the password protects exactly one thing — console login at the
+# physical machine, with root locked — which is the recovery path when SSH and
+# Tailscale are both unavailable. 03-chroot.sh sets and verifies it for that
+# reason.
+%wheel ALL=(ALL:ALL) NOPASSWD: ALL

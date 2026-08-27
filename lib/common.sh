@@ -27,6 +27,11 @@ DRIVES_CONF="${DRIVES_CONF:-$REPO_ROOT/drives.conf}"
 # against a fixture; nothing in this repository ever sets it.
 BYID_DIR="${BYID_DIR:-/dev/disk/by-id}"
 
+# Prefix for install_file / install_template destinations. Empty on a running
+# system; set to the mount point by install/03-chroot.sh so configuration lands
+# in the target rather than in the live ISO's filesystem.
+INSTALL_ROOT="${INSTALL_ROOT:-}"
+
 # ---------------------------------------------------------------------------
 # Output
 # ---------------------------------------------------------------------------
@@ -515,7 +520,7 @@ unit_reload() {
 # verbosity, which is what makes a second run.sh pass produce no output.
 install_file() {
     local rel="${1#/}" mode="${2:-0644}"
-    local src="$FILES_DIR/$rel" dst="/$rel"
+    local src="$FILES_DIR/$rel" dst="${INSTALL_ROOT}/$rel"
 
     [[ -f "$src" ]] || die "missing repo file: files/$rel"
 
@@ -534,7 +539,7 @@ install_file() {
 # shipping literal text into a config file.
 install_template() {
     local rel="${1#/}" mode="${2:-0644}"
-    local src="$FILES_DIR/$rel" dst="/$rel" tmp leftover
+    local src="$FILES_DIR/$rel" dst="${INSTALL_ROOT}/$rel" tmp leftover
 
     [[ -f "$src" ]] || die "missing repo template: files/$rel"
 
@@ -543,6 +548,8 @@ install_template() {
     sed -e "s|@HOSTNAME@|${TARGET_HOSTNAME:-}|g" \
         -e "s|@ADMIN_USER@|${ADMIN_USER:-}|g" \
         -e "s|@TIMEZONE@|${TIMEZONE:-}|g" \
+        -e "s|@LOCALE@|${LOCALE:-}|g" \
+        -e "s|@KEYMAP@|${KEYMAP:-}|g" \
         -e "s|@NTFY_SERVER@|${NTFY_SERVER:-}|g" \
         -e "s|@NTFY_TOPIC@|${NTFY_TOPIC:-}|g" \
         -e "s|@HC_HEARTBEAT_URL@|${HC_HEARTBEAT_URL:-}|g" \

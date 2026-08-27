@@ -1,0 +1,4 @@
+# Only the locale this host uses. locale-gen reads this file; the stock
+# version is the full commented list, and there is nothing to be gained by
+# shipping 500 commented lines to uncomment one.
+@LOCALE@ UTF-8
