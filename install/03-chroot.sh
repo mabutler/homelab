@@ -37,10 +37,15 @@ chr() { arch-chroot "$TARGET_MNT" "$@"; }
 
 # link_in_target <target> <linkpath> — symlink inside the chroot, idempotently.
 #
-# `ln -sf` fails with "are the same file" when the link already points where
-# you are asking it to point, and some of these links already exist in a fresh
-# pacstrap. That turns a re-run into a hard stop partway through, so compare
-# first and do nothing when it already matches.
+# Replaces rather than overwrites. `ln -sf` refuses with "are the same file"
+# whenever the destination already resolves to the target — including when the
+# existing link spells the same path differently, e.g. an absolute
+# /run/systemd/resolve/stub-resolv.conf against the relative ../run/... form
+# that systemd ships. Comparing link text does not catch that; removing the
+# link first sidesteps the identity check entirely.
+#
+# Reports what the link used to be, so a surprise here is visible rather than
+# silently normalised away.
 link_in_target() {
     local target="$1" link="$2" current
     current="$(chr readlink -- "$link" 2>/dev/null || true)"
@@ -48,8 +53,9 @@ link_in_target() {
         dbg "$link already -> $target"
         return 0
     fi
-    log "link $link -> $target"
-    chr ln -sfT -- "$target" "$link"
+    log "link $link -> $target${current:+  (was: $current)}"
+    chr rm -f -- "$link"
+    chr ln -sT -- "$target" "$link"
 }
 
 # --- locale, time, identity ------------------------------------------------
