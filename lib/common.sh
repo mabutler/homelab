@@ -520,18 +520,45 @@ section() {
     printf '\n%s%s%s\n' "$_C_BLUE" "$1" "$_C_RESET" >&2
 }
 
-# check <description> <command...>
-# Output is swallowed; the description is the report.
+# check <description> <predicate>
+#
+# On success: one line, nothing else. On failure: the predicate's output and
+# its definition, because a failing check that only says "FAILED" sends you
+# hunting for what it even tested. The point of this tool is to answer that
+# question on the spot.
 check() {
     local desc="$1"
     shift
-    if "$@" >/dev/null 2>&1; then
+    local out rc=0
+
+    out="$("$@" 2>&1)" || rc=$?
+
+    if (( rc == 0 )); then
         printf '  %sok%s    %s\n' "$_C_GREEN" "$_C_RESET" "$desc" >&2
         CHECKS_PASSED=$(( CHECKS_PASSED + 1 ))
-    else
-        printf '  %sFAIL%s  %s\n' "$_C_RED" "$_C_RESET" "$desc" >&2
-        CHECKS_FAILED=$(( CHECKS_FAILED + 1 ))
+        return 0
     fi
+
+    printf '  %sFAIL%s  %s\n' "$_C_RED" "$_C_RESET" "$desc" >&2
+    CHECKS_FAILED=$(( CHECKS_FAILED + 1 ))
+
+    # What the predicate actually tested. declare -f gives the body for a
+    # function; for anything else, echo the words that were run.
+    local body
+    if body="$(declare -f -- "$1" 2>/dev/null)"; then
+        # Drop the "name ()" line and the bare braces; indent what is left.
+        printf '%s\n' "$body" \
+            | sed -e '1d' -e '/^[[:space:]]*[{}][[:space:]]*$/d' \
+                  -e 's/^[[:space:]]*//' -e 's/^/          /' >&2
+    else
+        printf '          %s\n' "$*" >&2
+    fi
+
+    # And whatever it printed on the way to failing.
+    if [[ -n "$out" ]]; then
+        printf '%s\n' "$out" | sed 's/^/          > /' >&2
+    fi
+    return 0
 }
 
 # pending <description> — a stage that has not been run yet.
