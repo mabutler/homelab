@@ -7,6 +7,16 @@
 #
 # Sourced as shell. No spaces around '='; quote anything with spaces.
 # A second host is a second host.conf, not a second repository.
+#
+# Workflow: this repository is cloned to the target, host.conf.example is
+# copied to host.conf THERE, and filled in THERE — host.conf is gitignored, so
+# it never arrives with the clone. install/03-chroot.sh copies the working tree
+# (not a fresh clone) into the target at /opt/stack, which is what carries the
+# filled-in host.conf across the reboot.
+#
+# The identity section is required before anything in install/ will run.
+# Everything below it is only needed by the bootstrap step that uses it, so you
+# can leave those blank today and fill them in before running run.sh.
 
 # --- identity --------------------------------------------------------------
 
@@ -30,6 +40,9 @@ KEYMAP="us"
 ROOT_SIZE="50GiB"
 
 # --- alerting --------------------------------------------------------------
+#
+# Not required by install/. bootstrap/60-alerting.sh calls require_conf for
+# these and fails naming whichever is blank.
 
 NTFY_SERVER="https://ntfy.sh"
 

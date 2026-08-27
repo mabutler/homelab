@@ -115,6 +115,10 @@ confirm() {
 # The only per-machine file. Gitignored; the real copy lives in the password
 # manager, because a rebuild restores this repository but not this machine's
 # identity.
+# Only the identity values are required to load. Alerting values are not
+# needed to partition a disk, and demanding an ntfy topic before install/ will
+# run just teaches you to put a placeholder there. Scripts that need more call
+# require_conf for exactly what they use.
 load_host_conf() {
     [[ -f "$HOST_CONF" ]] \
         || die "missing $HOST_CONF — copy host.conf.example to host.conf and fill it in"
@@ -122,14 +126,22 @@ load_host_conf() {
     # shellcheck source=/dev/null
     source "$HOST_CONF"
 
-    local v missing=()
-    for v in TARGET_HOSTNAME ADMIN_USER TIMEZONE LOCALE KEYMAP ROOT_SIZE \
-             NTFY_SERVER NTFY_TOPIC; do
-        [[ -n "${!v:-}" ]] || missing+=("$v")
-    done
-    (( ${#missing[@]} == 0 )) || die "$HOST_CONF is missing values: ${missing[*]}"
+    require_conf TARGET_HOSTNAME ADMIN_USER TIMEZONE LOCALE KEYMAP ROOT_SIZE
 
     dbg "host.conf: $TARGET_HOSTNAME, admin=$ADMIN_USER, tz=$TIMEZONE"
+}
+
+# require_conf <VAR>... — fatal unless every named value is set and non-empty.
+# Call at the top of any script that depends on an optional host.conf value, so
+# the failure names the missing key instead of surfacing later as an empty
+# string substituted into a config file.
+require_conf() {
+    local v missing=()
+    for v in "$@"; do
+        [[ -n "${!v:-}" ]] || missing+=("$v")
+    done
+    (( ${#missing[@]} == 0 )) \
+        || die "$HOST_CONF is missing values needed here: ${missing[*]}"
 }
 
 # ---------------------------------------------------------------------------
