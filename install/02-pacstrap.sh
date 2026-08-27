@@ -77,10 +77,11 @@ PACKAGES=(
     git                 # /opt/stack is a git checkout on the running host
     vim
     less                # journalctl without a pager is not troubleshooting
+    tmux                # install and bootstrap runs happen over SSH; a dropped
+                        # connection should not kill a pacstrap or a snapraid sync
     man-db
     man-pages
     pacman-contrib      # pacdiff and paccache — the quarterly update ritual
-    tmux
 )
 
 # Deliberately absent: base-devel (nothing is built here), a text-mode browser,

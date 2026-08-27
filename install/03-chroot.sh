@@ -6,6 +6,12 @@
 # at the end are the whole point: this is the last moment at which a mistake is
 # cheap. After the reboot, a broken sshd or a missing key means walking to the
 # machine with a monitor.
+#
+# install/ runs once, but this script is written to be safely re-runnable from
+# the top: it is long, it can stop partway, and the way you recover from that
+# should be running it again rather than working out which half already
+# happened. Every step here is either a no-op when already done or harmless
+# to repeat.
 
 # shellcheck source=lib/common.sh
 source "$(dirname -- "${BASH_SOURCE[0]}")/../lib/common.sh"
@@ -29,6 +35,23 @@ ssd_dev="$(resolve_serial "$ssd_serial")"
 # chr <cmd>... — run inside the target.
 chr() { arch-chroot "$TARGET_MNT" "$@"; }
 
+# link_in_target <target> <linkpath> — symlink inside the chroot, idempotently.
+#
+# `ln -sf` fails with "are the same file" when the link already points where
+# you are asking it to point, and some of these links already exist in a fresh
+# pacstrap. That turns a re-run into a hard stop partway through, so compare
+# first and do nothing when it already matches.
+link_in_target() {
+    local target="$1" link="$2" current
+    current="$(chr readlink -- "$link" 2>/dev/null || true)"
+    if [[ "$current" == "$target" ]]; then
+        dbg "$link already -> $target"
+        return 0
+    fi
+    log "link $link -> $target"
+    chr ln -sfT -- "$target" "$link"
+}
+
 # --- locale, time, identity ------------------------------------------------
 install_template etc/locale.gen
 install_template etc/locale.conf
@@ -40,7 +63,7 @@ log "generating locale $LOCALE"
 chr locale-gen
 
 log "timezone $TIMEZONE"
-chr ln -sf "/usr/share/zoneinfo/$TIMEZONE" /etc/localtime
+link_in_target "/usr/share/zoneinfo/$TIMEZONE" /etc/localtime
 chr hwclock --systohc
 
 # --- the admin account -----------------------------------------------------
@@ -78,7 +101,7 @@ grep -q '^Include /etc/ssh/sshd_config.d/\*\.conf' "$TARGET_MNT/etc/ssh/sshd_con
 chr systemctl enable sshd.service
 chr systemctl enable systemd-networkd.service
 chr systemctl enable systemd-resolved.service
-chr ln -sf ../run/systemd/resolve/stub-resolv.conf /etc/resolv.conf
+link_in_target ../run/systemd/resolve/stub-resolv.conf /etc/resolv.conf
 
 # --- boot ------------------------------------------------------------------
 log "mkinitcpio for all kernels"
