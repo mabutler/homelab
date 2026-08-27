@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
-# install/00-preflight.sh — report what this machine looks like, verify it
-# matches drives.conf, and get typed confirmation for the one drive that is
-# about to be destroyed.
+# install/00-preflight.sh — report what this machine looks like and verify it
+# matches drives.conf.
 #
-# Reads only. Nothing here writes to any disk. Its whole job is to make the
-# next script's damage predictable.
+# Reads only, changes nothing, and asks nothing. Safe to run as often as you
+# like. Its whole job is to make the next script's damage predictable.
 
 # shellcheck source=lib/common.sh
 source "$(dirname -- "${BASH_SOURCE[0]}")/../lib/common.sh"
@@ -49,51 +48,10 @@ else
     warn "TRIM not reported — consider shrinking the appdata partition by 8 GiB for overprovisioning"
 fi
 
-# --- the destructive summary -----------------------------------------------
-model="$(lsblk -dno MODEL -- "$ssd_dev" | sed 's/[[:space:]]*$//')"
-size="$(size_of "$ssd_dev")"
+# --- what 01 will do -------------------------------------------------------
+# Shown here so you can read it without committing to anything. The typed
+# confirmation lives in 01-partition.sh, next to the destruction it guards:
+# a prompt on a script that erases nothing only teaches you to clear prompts.
+report_target_drive "$ssd_serial" "$ssd_dev"
 
-cat >&2 <<EOF
-
-  ────────────────────────────────────────────────────────────────
-  01-partition.sh will ERASE this drive and nothing else:
-
-      device   $ssd_dev
-      serial   $ssd_serial
-      model    $model
-      size     $size
-
-  Current contents of that drive:
-EOF
-lsblk -o NAME,SIZE,FSTYPE,LABEL -- "$ssd_dev" | sed 's/^/      /' >&2
-
-# Said out loud rather than enforced. A whole-disk filesystem is how the pool
-# drives are formatted, so seeing one here is worth a second look — but it is
-# your call, not the script's, and promoting a pool drive to OS duty is a
-# legitimate thing to do.
-whole_disk_fs="$(blkid -s TYPE -o value -- "$ssd_dev" 2>/dev/null || true)"
-if [[ -n "$whole_disk_fs" ]]; then
-    cat >&2 <<EOF
-
-      NOTE: this drive carries a $whole_disk_fs filesystem directly on the
-      whole disk, with no partition table. That is how the pool drives are
-      formatted. Check the serial above against drives.conf before confirming.
-EOF
-fi
-
-cat >&2 <<EOF
-
-  It will become:
-
-      p1  1 MiB        BIOS boot (ef02)
-      p2  $ROOT_SIZE       Btrfs      label archroot   -> /
-      p3  remainder    ext4       label APPDATA    -> /opt/appdata
-
-  The $(( ${#DRIVE_SERIALS[@]} - 1 )) pool drives listed above are NOT touched by any
-  script in install/. They are verified and left alone.
-  ────────────────────────────────────────────────────────────────
-EOF
-
-confirm "ERASE $ssd_dev"
-
-ok "preflight passed — next: install/01-partition.sh"
+ok "preflight passed — nothing has been changed. Next: install/01-partition.sh"

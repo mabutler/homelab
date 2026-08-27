@@ -42,6 +42,10 @@ if findmnt -rno SOURCE | grep -q "^${ssd_dev}"; then
     die "$ssd_dev has mounted partitions — unmount them first (findmnt | grep $ssd_dev)"
 fi
 
+# --- the point of no return ------------------------------------------------
+report_target_drive "$ssd_serial" "$ssd_dev"
+confirm "ERASE $ssd_dev"
+
 log "erasing and partitioning $ssd_dev ($ssd_serial)"
 
 # --- partition table -------------------------------------------------------

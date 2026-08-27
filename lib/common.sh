@@ -103,9 +103,11 @@ require_installed_system() {
 # keypress cannot clear the gate.
 confirm() {
     local want="$1" got=''
-    printf '\n%stype %s to continue (anything else aborts): %s' \
-        "$_C_YELLOW" "$want" "$_C_RESET" >&2
+    printf '\n%s  To continue, type this line exactly. Anything else aborts.%s\n\n' \
+        "$_C_YELLOW" "$_C_RESET" >&2
+    printf '      %s\n\n  > ' "$want" >&2
     read -r got || true
+    printf '\n' >&2
     [[ "$got" == "$want" ]] || die "aborted at confirmation prompt"
 }
 
@@ -396,6 +398,60 @@ report_drives() {
         return 0
     fi
     ok "all ${#DRIVE_SERIALS[@]} drives verified against $DRIVES_CONF"
+}
+
+# report_target_drive <serial> <device>
+# What is on the drive now, and what it will become. Printed by
+# 00-preflight.sh, which stops there, and again by 01-partition.sh
+# immediately before it destroys anything — the summary and the
+# confirmation belong next to the damage, not one script earlier.
+report_target_drive() {
+    local serial="$1" dev="$2" model size boot_desc whole_disk_fs
+    local rule='  ──────────────────────────────────────────────────────'
+
+    model="$(lsblk -dno MODEL -- "$dev" 2>/dev/null | sed 's/[[:space:]]*$//')"
+    size="$(size_of "$dev")"
+
+    if [[ -d /sys/firmware/efi ]]; then
+        boot_desc='p1  1 GiB        FAT32      label ESP        -> /boot'
+    else
+        boot_desc='p1  1 MiB        BIOS boot (ef02)'
+    fi
+
+    {
+        printf '\n%s\n' "$rule"
+        printf '  01-partition.sh will ERASE this drive, and nothing else:\n\n'
+        printf '      %-8s %s\n' device "$dev"
+        printf '      %-8s %s\n' serial "$serial"
+        printf '      %-8s %s\n' model  "$model"
+        printf '      %-8s %s\n' size   "$size"
+        printf '\n  On it right now:\n\n'
+    } >&2
+    lsblk -o NAME,SIZE,FSTYPE,LABEL -- "$dev" | sed 's/^/      /' >&2
+
+    # Said out loud, never enforced. A filesystem straight on the whole disk
+    # is how the pool drives are formatted, so it is worth a second look —
+    # but promoting a pool drive to OS duty is a legitimate thing to do, and
+    # drives.conf is where that decision is expressed.
+    whole_disk_fs="$(blkid -s TYPE -o value -- "$dev" 2>/dev/null || true)"
+    if [[ -n "$whole_disk_fs" ]]; then
+        {
+            printf '\n  NOTE: a %s filesystem sits directly on the whole disk,\n' "$whole_disk_fs"
+            printf '        with no partition table. That is how the pool drives\n'
+            printf '        are formatted. Check the serial against drives.conf.\n'
+        } >&2
+    fi
+
+    {
+        printf '\n  It will become:\n\n'
+        printf '      %s\n' "$boot_desc"
+        printf '      p2  %-12s Btrfs      label archroot   -> /\n' "$ROOT_SIZE"
+        printf '      p3  %-12s ext4       label APPDATA    -> /opt/appdata\n' remainder
+        printf '\n  The other %d drives in drives.conf are not touched by\n' \
+            "$(( ${#DRIVE_SERIALS[@]} - 1 ))"
+        printf '  anything in install/. They are verified and left alone.\n'
+        printf '%s\n' "$rule"
+    } >&2
 }
 
 # ---------------------------------------------------------------------------
