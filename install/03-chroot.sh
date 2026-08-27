@@ -174,6 +174,11 @@ check() {
 # checks standing between you and a machine that needs a monitor, so they
 # should be readable at a glance.
 c_sshd_parses()   { chr sshd -t; }
+# Valid syntax and effective config are different questions: `sshd -t` passes
+# on a file that is never read. Keyword case varies between OpenSSH versions,
+# so match case-insensitively with the value anchored.
+c_sshd_nopass()   { chr sshd -T 2>/dev/null | grep -qiE '^passwordauthentication[[:space:]]+no$'; }
+c_sshd_noroot()   { chr sshd -T 2>/dev/null | grep -qiE '^permitrootlogin[[:space:]]+no$'; }
 c_sudoers()       { chr visudo -cf /etc/sudoers.d/10-wheel >/dev/null; }
 c_user_exists()   { chr id -u "$ADMIN_USER" >/dev/null 2>&1; }
 c_in_wheel()      { chr id -nG "$ADMIN_USER" | grep -qw wheel; }
@@ -203,6 +208,8 @@ c_hostconf()      { [[ -f "$TARGET_MNT/opt/stack/host.conf" ]]; }
 c_git()           { [[ -d "$TARGET_MNT/opt/stack/.git" ]]; }
 
 check "sshd config parses"                     c_sshd_parses
+check "password auth is off in effect"         c_sshd_nopass
+check "root ssh login is off in effect"        c_sshd_noroot
 check "sudoers drop-in parses"                 c_sudoers
 check "$ADMIN_USER exists"                     c_user_exists
 check "$ADMIN_USER is in wheel"                c_in_wheel

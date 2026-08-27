@@ -90,8 +90,14 @@ fi
 section "Access"
 
 c_sshd_active()  { systemctl is-active --quiet sshd.service; }
-c_no_passwords() { sshd -T 2>/dev/null | grep -qx 'passwordauthentication no'; }
-c_no_root_ssh()  { sshd -T 2>/dev/null | grep -qx 'permitrootlogin no'; }
+# sshd -T keyword case varies between OpenSSH versions — this host prints
+# "PasswordAuthentication no", older ones lowercase it. Match case- and
+# whitespace-insensitively, but keep the value anchored so a permissive
+# setting (yes, prohibit-password) still fails.
+sshd_effective() { sshd -T 2>/dev/null; }
+c_no_passwords() { sshd_effective | grep -qiE '^passwordauthentication[[:space:]]+no$'; }
+c_no_root_ssh()  { sshd_effective | grep -qiE '^permitrootlogin[[:space:]]+no$'; }
+c_pubkey_on()    { sshd_effective | grep -qiE '^pubkeyauthentication[[:space:]]+yes$'; }
 c_hostkeys()     { ls /etc/ssh/ssh_host_*_key >/dev/null 2>&1; }
 c_key_perms()    { [[ "$(stat -c '%a %U' "/home/$ADMIN_USER/.ssh/authorized_keys")" == "600 $ADMIN_USER" ]]; }
 c_ssh_dir()      { [[ "$(stat -c '%a %U' "/home/$ADMIN_USER/.ssh")" == "700 $ADMIN_USER" ]]; }
