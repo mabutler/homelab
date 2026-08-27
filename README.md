@@ -63,7 +63,7 @@ homelab/
 ├── bootstrap/              run on the installed system. idempotent.
 ├── files/                  everything that becomes host configuration
 ├── apps/                   container units (later stage)
-├── tools/                  verify.sh, smart-snapshot.sh, format-pool-drive.sh
+├── tools/                  check-drives.sh, verify.sh, smart-snapshot.sh, …
 ├── docs/
 ├── deploy.sh               symlink app units and tmpfiles, daemon-reload
 └── run.sh                  runs bootstrap/ in order

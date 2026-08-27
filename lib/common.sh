@@ -23,6 +23,10 @@ FILES_DIR="$REPO_ROOT/files"
 HOST_CONF="${HOST_CONF:-$REPO_ROOT/host.conf}"
 DRIVES_CONF="${DRIVES_CONF:-$REPO_ROOT/drives.conf}"
 
+# The by-id directory. Overridable only so the resolver can be exercised
+# against a fixture; nothing in this repository ever sets it.
+BYID_DIR="${BYID_DIR:-/dev/disk/by-id}"
+
 # ---------------------------------------------------------------------------
 # Output
 # ---------------------------------------------------------------------------
@@ -214,8 +218,8 @@ serial_to_dev() {
     local serial="$1" link dev
     local -a matches=()
 
-    for link in "/dev/disk/by-id/ata-"*"_${serial}" \
-                "/dev/disk/by-id/nvme-"*"_${serial}"; do
+    for link in "$BYID_DIR/ata-"*"_${serial}" \
+                "$BYID_DIR/nvme-"*"_${serial}"; do
         [[ -e "$link" ]] || continue
         [[ "$link" == *-part[0-9]* ]] && continue
         dev="$(readlink -f -- "$link")"
@@ -248,9 +252,126 @@ dev_serial() {
     lsblk -dno SERIAL -- "$1" 2>/dev/null || true
 }
 
-# label_of <device> — filesystem label, empty if none.
+# label_of <device> — whole-disk filesystem label, empty if none.
+#
+# blkid first: it probes the device directly. lsblk's LABEL column is served
+# from the udev database, which can be empty on a live ISO shortly after drives
+# are attached — and since 40-storage.sh refuses to proceed on a label
+# mismatch, a cold udev db would abort the build over a label that is really
+# there. lsblk is the fallback for the unprivileged case, where blkid cannot
+# open the device.
+#
+# This reads the disk itself, not its partitions. The pool drives are
+# unpartitioned ext4 so their label is here; the SSD's label lives on p2, and
+# this correctly returns empty for it.
 label_of() {
-    lsblk -dno LABEL -- "$1" 2>/dev/null || true
+    local dev="$1" found
+    found="$(blkid -s LABEL -o value -- "$dev" 2>/dev/null || true)"
+    [[ -n "$found" ]] || found="$(lsblk -dno LABEL -- "$dev" 2>/dev/null || true)"
+    printf '%s\n' "${found//[[:space:]]/}"
+}
+
+# size_of <device> — as lsblk renders it, e.g. "1.8T".
+size_of() {
+    lsblk -dno SIZE -- "$1" 2>/dev/null | tr -d ' ' || true
+}
+
+# is_rotational <device> — true for spinning rust, false for SSD.
+is_rotational() {
+    [[ "$(lsblk -dno ROTA -- "$1" 2>/dev/null | tr -d ' ')" == "1" ]]
+}
+
+# ---------------------------------------------------------------------------
+# Drive verification
+# ---------------------------------------------------------------------------
+# Shared by install/00-preflight.sh and bootstrap/40-storage.sh, and runnable
+# on its own as tools/check-drives.sh. Reads only; never writes to a drive.
+#
+# Checks, by role:
+#   all          the serial resolves, and no two rows resolve to the same device
+#   parity/data  the whole-disk label matches drives.conf — these drives are
+#                unpartitioned ext4, so the label is a PRECONDITION, and a
+#                mismatch means stop, not relabel
+#   ssd          the drive is non-rotational. Its label is an OUTPUT of
+#                01-partition.sh, applied to p2, so there is nothing to compare
+#                before the install has run.
+#
+# Size is compared as lsblk renders it and reported as a warning, not a
+# failure: a mismatch means drives.conf is stale, which is worth knowing but
+# is not itself unsafe.
+#
+# Returns 0 only when every row passes.
+report_drives() {
+    local s dev want role size mark row_bad
+    local problems=0 warnings=0
+    local -A seen_dev=()
+
+    printf '%-18s %-9s %-7s %-10s %-8s %s\n' \
+        SERIAL LABEL ROLE DEVICE SIZE RESULT >&2
+
+    for s in "${DRIVE_SERIALS[@]}"; do
+        want="${DRIVE_LABEL[$s]}"
+        role="${DRIVE_ROLE[$s]}"
+        dev="$(serial_to_dev "$s" || true)"
+
+        if [[ -z "$dev" ]]; then
+            printf '%-18s %-9s %-7s %-10s %-8s %s\n' \
+                "$s" "$want" "$role" '-' '-' 'NOT ATTACHED' >&2
+            problems=$(( problems + 1 ))
+            continue
+        fi
+
+        size="$(size_of "$dev")"
+        mark='ok'
+        row_bad=0
+
+        if [[ -n "${seen_dev[$dev]:-}" ]]; then
+            mark="DUPLICATE — also matched by ${seen_dev[$dev]}"
+            row_bad=1
+        fi
+        seen_dev["$dev"]="$s"
+
+        if (( ! row_bad )); then
+            case "$role" in
+                parity|data)
+                    local found
+                    found="$(label_of "$dev")"
+                    if [[ "$found" != "$want" ]]; then
+                        mark="LABEL IS '${found:-none}', EXPECTED '$want'"
+                        row_bad=1
+                    fi
+                    ;;
+                ssd)
+                    if is_rotational "$dev"; then
+                        mark="ROTATIONAL — this is not the SSD"
+                        row_bad=1
+                    else
+                        mark='ok (label applied by 01-partition.sh)'
+                    fi
+                    ;;
+            esac
+        fi
+
+        if (( ! row_bad )) && [[ "${DRIVE_SIZE[$s]}" != '?' && "$size" != "${DRIVE_SIZE[$s]}" ]]; then
+            mark="$mark — size reads $size, drives.conf says ${DRIVE_SIZE[$s]}"
+            warnings=$(( warnings + 1 ))
+        fi
+
+        (( row_bad )) && problems=$(( problems + 1 ))
+
+        printf '%-18s %-9s %-7s %-10s %-8s %s\n' \
+            "$s" "$want" "$role" "$dev" "$size" "$mark" >&2
+    done
+
+    if (( problems )); then
+        err "$problems of ${#DRIVE_SERIALS[@]} drives failed verification"
+        return 1
+    fi
+    if (( warnings )); then
+        warn "all ${#DRIVE_SERIALS[@]} drives verified, with $warnings size warning(s)"
+        return 0
+    fi
+    ok "all ${#DRIVE_SERIALS[@]} drives verified against $DRIVES_CONF"
 }
 
 # ---------------------------------------------------------------------------
