@@ -258,6 +258,27 @@ resolve_serial() {
     printf '%s\n' "$dev"
 }
 
+# part_link <serial> <n> — the /dev/disk/by-id path of partition n on the drive
+# with this serial. Partition naming differs by bus (sdi2 vs nvme0n1p2), so
+# scripts address partitions through by-id links rather than building paths.
+part_link() {
+    local serial="$1" n="$2" link
+    for link in "$BYID_DIR/ata-"*"_${serial}-part${n}" \
+                "$BYID_DIR/nvme-"*"_${serial}-part${n}"; do
+        [[ -e "$link" ]] || continue
+        printf '%s\n' "$link"
+        return 0
+    done
+    return 1
+}
+
+# settle — wait for udev to catch up after changing a partition table, so the
+# by-id links exist before the next step looks for them.
+settle() {
+    command -v udevadm >/dev/null 2>&1 && udevadm settle --timeout=20 >/dev/null 2>&1
+    return 0
+}
+
 # dev_serial <device> — reverse lookup, for reporting on something found on
 # the machine that drives.conf does not mention.
 dev_serial() {
@@ -288,11 +309,6 @@ size_of() {
     lsblk -dno SIZE -- "$1" 2>/dev/null | tr -d ' ' || true
 }
 
-# is_rotational <device> — true for spinning rust, false for SSD.
-is_rotational() {
-    [[ "$(lsblk -dno ROTA -- "$1" 2>/dev/null | tr -d ' ')" == "1" ]]
-}
-
 # ---------------------------------------------------------------------------
 # Drive verification
 # ---------------------------------------------------------------------------
@@ -304,9 +320,10 @@ is_rotational() {
 #   parity/data  the whole-disk label matches drives.conf — these drives are
 #                unpartitioned ext4, so the label is a PRECONDITION, and a
 #                mismatch means stop, not relabel
-#   ssd          the drive is non-rotational. Its label is an OUTPUT of
+#   ssd          nothing beyond resolving. Its label is an OUTPUT of
 #                01-partition.sh, applied to p2, so there is nothing to compare
-#                before the install has run.
+#                before the install has run, and what kind of drive serves as
+#                the OS disk is a decision for drives.conf, not for this check.
 #
 # Size is compared as lsblk renders it and reported as a warning, not a
 # failure: a mismatch means drives.conf is stale, which is worth knowing but
@@ -354,12 +371,7 @@ report_drives() {
                     fi
                     ;;
                 ssd)
-                    if is_rotational "$dev"; then
-                        mark="ROTATIONAL — this is not the SSD"
-                        row_bad=1
-                    else
-                        mark='ok (label applied by 01-partition.sh)'
-                    fi
+                    mark='ok (label applied by 01-partition.sh)'
                     ;;
             esac
         fi
