@@ -170,6 +170,16 @@ else
     pending "not run yet — zram, sysctl, journald cap, fstrim, time sync"
 fi
 
+section "AUR support — bootstrap/15-aur.sh"
+if command -v paru >/dev/null 2>&1; then
+    c_paru()      { command -v paru >/dev/null; }
+    c_makepkg()   { command -v makepkg >/dev/null; }
+    check "paru is installed"                       c_paru
+    check "makepkg is available"                    c_makepkg
+else
+    pending "not run yet — paru, base-devel"
+fi
+
 section "Snapshots — bootstrap/20-snapshots.sh"
 if have snapper; then
     c_snapper_root(){ grep_output '(^|[[:space:]])root([[:space:]]|$)' snapper list-configs; }

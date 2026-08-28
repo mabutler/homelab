@@ -159,7 +159,10 @@ fi
 # ---------------------------------------------------------------------------
 # Mount
 # ---------------------------------------------------------------------------
-pkg_install mergerfs
+# mergerfs is AUR-only — see bootstrap/15-aur.sh for why that is unavoidable
+# and what it costs. Built from source against this system's fuse3, which means
+# a fuse3 soname bump needs a rebuild; `paru -Syu` handles that.
+aur_install mergerfs
 
 if [[ -z "$DRY_RUN" ]]; then
     log "mounting everything in fstab that is not already mounted"

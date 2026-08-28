@@ -466,7 +466,12 @@ pkg_install() {
     (( $# > 0 )) || return 0
     local p want=()
     for p in "$@"; do
-        pacman -Qq -- "$p" >/dev/null 2>&1 || want+=("$p")
+        # -Qq fails on a group name (base-devel), so check group membership too,
+        # or every run would re-issue the install and break the silent-re-run
+        # contract. --needed makes the install itself a no-op either way.
+        pacman -Qq -- "$p" >/dev/null 2>&1 && continue
+        pacman -Qg -- "$p" >/dev/null 2>&1 && continue
+        want+=("$p")
     done
     if (( ${#want[@]} == 0 )); then
         dbg "already installed: $*"
@@ -474,6 +479,33 @@ pkg_install() {
     fi
     log "pacman: ${want[*]}"
     run pacman -S --needed --noconfirm -- "${want[@]}"
+}
+
+# aur_install <package>...
+#
+# Installs from the AUR via paru, as ADMIN_USER — paru and makepkg both refuse
+# to run as root, by design, because a PKGBUILD is arbitrary code.
+#
+# mergerfs and snapraid are AUR-only, so this repository cannot avoid the AUR.
+# What it can do is keep the surface small and explicit: two packages, named
+# here, installed through one tool that bootstrap/15-aur.sh built.
+aur_install() {
+    (( $# > 0 )) || return 0
+    require_conf ADMIN_USER
+    command -v paru >/dev/null 2>&1 \
+        || die "paru is not installed — run bootstrap/15-aur.sh first"
+
+    local p want=()
+    for p in "$@"; do
+        pacman -Qq -- "$p" >/dev/null 2>&1 || want+=("$p")
+    done
+    if (( ${#want[@]} == 0 )); then
+        dbg "already installed from the AUR: $*"
+        return 0
+    fi
+
+    log "paru: ${want[*]}  (building from source; slow on this hardware)"
+    run sudo -u "$ADMIN_USER" -H paru -S --noconfirm --needed -- "${want[@]}"
 }
 
 # unit_enable [--now] <unit>...
