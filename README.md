@@ -17,10 +17,13 @@ Cloned to `/opt/stack` on each host it provisions.
 | Stage | | |
 |---|---|---|
 | **A** | Scaffolding — `lib/common.sh`, config files, `run.sh` | **done** |
-| B | `install/` — preflight, partition, pacstrap, chroot | not started |
-| C | `bootstrap/` — `10` through `70` | not started |
-| D | `tools/verify.sh` — the acceptance checklist as assertions | not started |
-| E | `apps/` — Podman Quadlet units | separate scope |
+| **B** | `install/` — preflight, partition, pacstrap, chroot | **done, run on real hardware** |
+| **C** | `bootstrap/` — `10` through `70` | **done, run on real hardware** |
+| **D** | `tools/verify.sh` — the acceptance checklist as assertions | **done**; failure drills outstanding |
+| E | `apps/` — Podman Quadlet units | next |
+
+Day-to-day operation, the quarterly update ritual, what each alert means and
+what to do when a drive dies: **[`RUNBOOK.md`](RUNBOOK.md)**.
 
 Target host `fidelacchius`: Intel i3-2120, 7.7 GiB RAM, legacy BIOS.
 One 120 GB SSD, three 2 TB and one 1 TB spinning drives.
@@ -61,9 +64,12 @@ homelab/
 ├── lib/common.sh           logging, guards, config loading, install helpers
 ├── install/                run from the live ISO. destructive. once.
 ├── bootstrap/              run on the installed system. idempotent.
+│                           10 base · 15 aur · 20 snapshots · 30 access
+│                           40 storage · 50 snapraid · 60 alerting · 70 podman
 ├── files/                  everything that becomes host configuration
 ├── apps/                   container units (later stage)
 ├── tools/                  check-drives.sh, verify.sh, smart-snapshot.sh, …
+├── RUNBOOK.md              operating notes — read this when something breaks
 ├── docs/
 ├── deploy.sh               symlink app units and tmpfiles, daemon-reload
 └── run.sh                  runs bootstrap/ in order
