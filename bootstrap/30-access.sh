@@ -59,18 +59,16 @@ fi
 pkg_install tailscale jq
 unit_enable --now tailscaled.service
 
-# Tagging happens HERE, at join time, and not later.
-#
-# `tailscale set --advertise-tags` re-authenticates the machine, which is a
-# rude thing to do to an SSH session halfway through deploying an app. At join
-# time you are already authenticating, so it costs nothing — and it means the
-# node is tagged before anything is ever published from it, rather than being
-# retrofitted afterwards.
+# TAILSCALE_TAGS from host.conf is a declaration, like every other value in
+# that file: this script converges the node to match it. On a from-scratch
+# build that happens in the same `tailscale up` you were going to authenticate
+# anyway, so it costs nothing.
 #
 # A tagged node is owned by the tailnet rather than by you: it is not in
 # autogroup:member, so the policy gives it no outbound access to anything. That
-# is the containment for "a Vaultwarden compromise becomes a tailnet foothold".
-# It also has no key expiry, which makes the "disable key expiry" toggle moot.
+# is the containment for "a Vaultwarden compromise becomes a tailnet foothold",
+# and it is what grants the `funnel` attribute the apps rely on. Tagged nodes
+# also have no key expiry, which makes the "disable key expiry" toggle moot.
 #
 # The policy in apps/vaultwarden/tailnet-policy.hujson must already be applied
 # in the admin console — it defines tagOwners for the tag and grants the funnel
@@ -81,21 +79,70 @@ if [[ -n "${TAILSCALE_TAGS:-}" ]]; then
     tags_arg=(--advertise-tags="$TAILSCALE_TAGS")
 fi
 
+node_has_declared_tags() {
+    local have t
+    have=" $(tailscale status --json 2>/dev/null | jq -r '(.Self.Tags // []) | join(" ")') "
+    for t in ${TAILSCALE_TAGS//,/ }; do
+        [[ "$have" == *" $t "* ]] || return 1
+    done
+    return 0
+}
+
+# Re-tagging a node that is already up re-authenticates it, and Tailscale SSH
+# sessions to it do not survive that. Running it from the session it is about to
+# kill leaves bootstrap half-finished, which is a worse outcome than waiting.
+#
+# So: detect that specific case, and only that one. Over the LAN, at the
+# console, or inside tmux/screen — where the process outlives the connection —
+# it just happens.
+peer_is_tailnet() {
+    local peer="${SSH_CONNECTION%% *}"
+    # 100.64.0.0/10, the CGNAT range Tailscale assigns from.
+    [[ "$peer" =~ ^100\.(6[4-9]|[7-9][0-9]|1[0-1][0-9]|12[0-7])\. ]]
+}
+
+in_multiplexer() {
+    local pid="$PPID" comm
+    while [[ -n "$pid" && "$pid" -gt 1 ]]; do
+        comm="$(ps -o comm= -p "$pid" 2>/dev/null || true)"
+        [[ "$comm" == tmux* || "$comm" == screen* ]] && return 0
+        pid="$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ')"
+    done
+    return 1
+}
+
 if [[ -n "$DRY_RUN" ]]; then
     log "would join the tailnet as $TARGET_HOSTNAME (skipped in a dry run)"
 elif tailscale status >/dev/null 2>&1; then
     dbg "already on the tailnet"
-    # Converge the settings that matter even on a node that joined earlier —
-    # `tailscale set` is the idempotent half of `tailscale up`. Tags are left
-    # out of this path on purpose: re-advertising them on a live node forces a
-    # re-authentication, so changing the tag of a running host is a deliberate
-    # act, not something a re-run of bootstrap does to you.
+    # `tailscale set` is the idempotent half of `tailscale up`.
     run tailscale set --ssh=true --hostname="$TARGET_HOSTNAME"
-    if [[ -n "${TAILSCALE_TAGS:-}" ]] \
-       && ! grep_output "$TAILSCALE_TAGS" tailscale status --json; then
-        warn "this node is not tagged $TAILSCALE_TAGS."
-        warn "Applying it re-authenticates the machine, so it is not done here:"
-        warn "  sudo tailscale set --advertise-tags=$TAILSCALE_TAGS"
+
+    if [[ -n "${TAILSCALE_TAGS:-}" ]] && ! node_has_declared_tags; then
+        if peer_is_tailnet && ! in_multiplexer; then
+            err "this node is not tagged $TAILSCALE_TAGS, and applying the tag"
+            err "re-authenticates the machine — which would drop THIS session,"
+            err "leaving the rest of bootstrap unrun. You are connected over the"
+            err "tailnet (${SSH_CONNECTION%% *}) and not inside tmux."
+            err ""
+            err "Reconnect over the LAN, or wrap this in tmux, then:"
+            err "  cd /opt/stack && sudo ./run.sh --from 30"
+            die "refusing to cut the branch this script is sitting on"
+        fi
+
+        log "applying $TAILSCALE_TAGS (this re-authenticates the machine)"
+        warn "a login URL may print below — open it to approve the tag"
+        run tailscale set --advertise-tags="$TAILSCALE_TAGS"
+
+        if [[ -z "$DRY_RUN" ]]; then
+            sleep 3
+            tailscale status >/dev/null 2>&1 \
+                || die "tailscale is unhealthy after tagging — check 'tailscale status'
+and the admin console. The tag needs an owner in the policy file
+(tagOwners) before this node can claim it."
+            node_has_declared_tags \
+                || warn "the tag has not appeared yet — if a login URL printed above, approve it"
+        fi
     fi
 else
     log "joining the tailnet as $TARGET_HOSTNAME${TAILSCALE_TAGS:+ ($TAILSCALE_TAGS)}"

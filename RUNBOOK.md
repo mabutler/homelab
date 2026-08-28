@@ -534,6 +534,15 @@ Recorded because each one cost real time and none of them are obvious.
   case-insensitively.
 - **`sshd -t` proves the file parses, not that it is read.** A drop-in that is
   never included parses perfectly. Assert the effective config.
+- **The fstype findmnt REPORTS for mergerfs is not stable.** It has been
+  `fuse.mergerfs` and it has been plain `mergerfs`; an upgrade flipping it
+  failed a healthy pool in `40-storage.sh`. Match `(fuse\.)?mergerfs`, and in
+  general assert what a mount *is*, not what a version labels it. (The fstab
+  fstype above is a separate thing and must stay `mergerfs`.)
+- **`nofail` hides mount failures from `mount -a`.** It exits 0 having skipped
+  the entry. Correct for boot — a dead drive should not strand the host — but
+  it means a check after `mount -a` must re-attempt the mount to see the error,
+  not just assert and give up.
 - **Vaultwarden's `DATABASE_URL` needs a scheme.** A bare path is not a URL;
   it must be `sqlite:///data/db.sqlite3` — three slashes, `sqlite://` plus the
   absolute path. Without it the container exits at startup rather than falling

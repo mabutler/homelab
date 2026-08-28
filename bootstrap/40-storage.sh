@@ -213,8 +213,48 @@ if [[ -z "$DRY_RUN" ]]; then
     done
     (( bad_mounts == 0 )) || die "$bad_mounts pool mount(s) wrong — not proceeding to SnapRAID"
 
-    [[ "$(findmnt -no FSTYPE -- "$POOL_MNT" 2>/dev/null || true)" == "fuse.mergerfs" ]] \
-        || die "$POOL_MNT is not a mergerfs mount"
+    # `nofail` is on the pool line too, which means a failed mergerfs mount is
+    # skipped by `mount -a` WITHOUT a non-zero exit — the option that stops a
+    # dead drive stranding the host at boot also swallows the one error worth
+    # reading. So do not just assert: ask for the mount directly, where the
+    # error is reported, and print it.
+    # Do NOT assert on an exact fstype string. What findmnt reports for a
+    # mergerfs mount is a mergerfs *version* detail, not a property of the pool:
+    # it has been "fuse.mergerfs" and it has been plain "mergerfs", and an
+    # upgrade flipping it turned a healthy pool into a hard failure here once.
+    #
+    # Assert what actually matters instead — that /mnt/pool is a mount at all,
+    # and that it is a mergerfs one rather than the SSD directory underneath.
+    pool_fstype="$(findmnt -no FSTYPE -- "$POOL_MNT" 2>/dev/null || true)"
+    pool_source="$(findmnt -no SOURCE -- "$POOL_MNT" 2>/dev/null || true)"
+    dbg "$POOL_MNT fstype=${pool_fstype:-<none>} source=${pool_source:-<none>}"
+
+    pool_ok=0
+    case "${pool_fstype,,}" in
+        mergerfs|fuse.mergerfs)
+            pool_ok=1 ;;
+        fuse|fuse3)
+            # Older/odd builds report the generic fuse type. The source is then
+            # the branch list or our fsname=, either of which identifies it.
+            [[ "$pool_source" == *"${DATA_MNTS[0]}"* || "$pool_source" == "mergerfs" ]] \
+                && pool_ok=1 ;;
+    esac
+
+    if (( ! pool_ok )); then
+        err "$POOL_MNT is not a mergerfs mount${pool_fstype:+ — found $pool_fstype}"
+        err "mount -a passed over it silently (nofail). Retrying it directly:"
+        mount -v -- "$POOL_MNT" >&2 || true
+
+        # The two failures that actually happen here, both from the AUR build:
+        if ! command -v mount.mergerfs >/dev/null 2>&1; then
+            err "there is no mount.mergerfs helper on PATH — the package is not"
+            err "providing it:  paru -S mergerfs"
+        elif ! mount.mergerfs -V >/dev/null 2>&1; then
+            err "mount.mergerfs exists but will not run — usually a fuse3 soname"
+            err "bump since it was built. Rebuild it:  paru -S --rebuild mergerfs"
+        fi
+        die "pool did not assemble"
+    fi
 
     findmnt -no TARGET,SOURCE,FSTYPE,SIZE,AVAIL "$POOL_MNT" >&2
     for m in "${DATA_MNTS[@]}"; do

@@ -213,7 +213,10 @@ fi
 
 section "Storage pool — bootstrap/40-storage.sh"
 if findmnt -no TARGET /mnt/pool >/dev/null 2>&1; then
-    c_pool_fs()    { [[ "$(findmnt -no FSTYPE /mnt/pool)" == fuse.mergerfs ]]; }
+    # Not an exact string: what findmnt reports for mergerfs is a version
+    # detail. It has been "fuse.mergerfs" and it has been "mergerfs", and an
+    # upgrade flipping it once failed a perfectly healthy pool.
+    c_pool_fs()    { [[ "$(findmnt -no FSTYPE /mnt/pool)" =~ ^(fuse\.)?mergerfs$ ]]; }
     c_fstab_block(){ grep -qF 'homelab pool mounts' /etc/fstab; }
     # Both markers or neither. One without the other means the next run of
     # 40-storage.sh would eat everything after the begin marker.

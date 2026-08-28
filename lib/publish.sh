@@ -77,6 +77,37 @@ funnel_is_on() {
     [[ "$on" == "true" ]]
 }
 
+node_tags() {
+    tailscale status --json 2>/dev/null | jq -r '(.Self.Tags // []) | join(" ")'
+}
+
+# The `funnel` node attribute is granted by the tailnet policy, and this
+# repository's policy attaches it to a TAG rather than to a user. So an untagged
+# node does not get an error from `tailscale funnel` — it gets an interactive
+# "visit this URL to allow" prompt, which in an unattended script is worse than
+# a refusal: the command appears to run, nothing is published, and the reason
+# scrolls past.
+#
+# Checking the tag ourselves turns that into a sentence you can act on.
+node_is_funnel_tagged() {
+    local want="${TAILSCALE_TAGS:-}" have t
+    [[ -n "$want" ]] || return 0          # nothing declared, nothing to check
+    have=" $(node_tags) "
+    for t in ${want//,/ }; do
+        [[ "$have" == *" $t "* ]] || return 1
+    done
+    return 0
+}
+
+funnel_tag_advice() {
+    warn "this node is not tagged ${TAILSCALE_TAGS:-}, so the tailnet policy does"
+    warn "not grant it the 'funnel' attribute — that is what Tailscale is asking"
+    warn "you to approve. Apply the tag instead:"
+    warn "  sudo tailscale set --advertise-tags=${TAILSCALE_TAGS:-tag:server}"
+    warn "It RE-AUTHENTICATES the machine, so run it from tmux, LAN ssh, or the"
+    warn "console — not from the Tailscale SSH session it will interrupt."
+}
+
 # HTTPS certificates are a tailnet-wide toggle with no CLI. Without it every
 # `tailscale serve https` call fails with a certificate error that reads like a
 # local problem and is not one.
@@ -127,6 +158,13 @@ publish_app() {
 
     if funnel_is_on; then
         dbg "$app: funnel already on"
+        return 0
+    fi
+
+    if ! node_is_funnel_tagged; then
+        warn "$app: NOT publishing to the internet —"
+        funnel_tag_advice
+        warn "$app: tailnet access is up. Deploy again once the tag is applied."
         return 0
     fi
 

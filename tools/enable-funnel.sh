@@ -75,6 +75,11 @@ serve_is_mounted "$SERVE_PATH" "$SERVE_TARGET" \
     || die "$APP is not served on the tailnet yet. Run deploy.sh first, and confirm
 the site loads from a tailnet device before making it public."
 
+if ! node_is_funnel_tagged; then
+    funnel_tag_advice
+    die "this node cannot be funnelled yet — nothing has been changed"
+fi
+
 if [[ -n "${FUNNEL_GUARD:-}" ]] && ! "$FUNNEL_GUARD"; then
     die "$APP's funnel guard says no — see above. Nothing has been changed."
 fi

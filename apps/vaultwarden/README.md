@@ -247,15 +247,15 @@ untagged node would be a foothold on the whole tailnet. A tagged node is owned
 by the tailnet rather than by you, so it is not in `autogroup:member` and gets
 no outbound access to anything. Your phone reaches it; it reaches nothing.
 
-Applying the tag **re-authenticates the machine**, which is why it happens at
-join time in `bootstrap/30-access.sh` and not later: you are already
-authenticating there, so it costs nothing, and the node is tagged before
-anything is ever published from it.
+`TAILSCALE_TAGS` in `host.conf` is the declaration and `bootstrap/30-access.sh`
+converges the node to it — at join time on a fresh build, where you were
+authenticating anyway, and by `tailscale set` on a host that is already up.
 
-Changing the tag on a host that is already up is a deliberate manual step —
-`30-access.sh` warns about a mismatch but will not force a re-auth on you
-mid-run. Do it from `tmux`, LAN ssh, or the console, not from the Tailscale SSH
-session it is about to interrupt.
+Applying the tag **re-authenticates the machine**, and Tailscale SSH sessions do
+not survive that. `30-access.sh` detects exactly that case — connected from
+`100.64.0.0/10` and not inside tmux or screen — and refuses rather than dropping
+the session with the rest of bootstrap unrun. Over the LAN, at the console, or
+inside tmux it simply happens.
 
 Tagged nodes also have no key expiry, which makes the "disable key expiry"
 toggle moot.
