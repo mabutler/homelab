@@ -601,6 +601,13 @@ checks_summary() {
 # Scripts never write config with heredocs — a file in the tree is diffable
 # and greppable, a heredoc is neither.
 
+# Set by install_file and install_template on every call: 1 when the
+# destination actually changed, 0 when it was already identical. Lets a caller
+# restart a service only when its configuration moved, instead of bouncing it
+# on every idempotent re-run.
+# shellcheck disable=SC2034  # read by callers in bootstrap/
+INSTALL_CHANGED=0
+
 # install_file <path-under-files/> [mode]
 #   install_file etc/systemd/zram-generator.conf
 # copies files/etc/systemd/zram-generator.conf to /etc/systemd/zram-generator.conf.
@@ -612,12 +619,15 @@ install_file() {
 
     [[ -f "$src" ]] || die "missing repo file: files/$rel"
 
+    INSTALL_CHANGED=0
     if [[ -f "$dst" ]] && cmp -s -- "$src" "$dst"; then
         dbg "unchanged: $dst"
         return 0
     fi
     log "install $dst"
     run install -Dm"$mode" -- "$src" "$dst"
+    # shellcheck disable=SC2034  # read by callers in bootstrap/
+    INSTALL_CHANGED=1
 }
 
 # install_template <path-under-files/> [mode]
@@ -652,6 +662,7 @@ install_template() {
         die "files/$rel has unsubstituted placeholders: $leftover"
     fi
 
+    INSTALL_CHANGED=0
     if [[ -f "$dst" ]] && cmp -s -- "$tmp" "$dst"; then
         rm -f -- "$tmp"
         dbg "unchanged: $dst"
@@ -660,4 +671,6 @@ install_template() {
     log "install $dst (templated)"
     run install -Dm"$mode" -- "$tmp" "$dst"
     rm -f -- "$tmp"
+    # shellcheck disable=SC2034  # read by callers in bootstrap/
+    INSTALL_CHANGED=1
 }
