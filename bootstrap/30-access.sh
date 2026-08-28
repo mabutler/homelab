@@ -158,9 +158,14 @@ elif tailscale status >/dev/null 2>&1; then
             die "refusing to cut the branch this script is sitting on"
         fi
 
+        # `tailscale login`, not `tailscale set`. Tags change who OWNS the node,
+        # so they cannot be set as an ordinary preference — `set` has no
+        # --advertise-tags flag at all. `login` is the re-authentication this
+        # requires, and unlike `tailscale up` it does not want every other
+        # preference restated to avoid resetting them.
         log "applying $TAILSCALE_TAGS (this re-authenticates the machine)"
         warn "a login URL may print below — open it to approve the tag"
-        run tailscale set --advertise-tags="$TAILSCALE_TAGS"
+        run tailscale login --advertise-tags="$TAILSCALE_TAGS"
 
         if [[ -z "$DRY_RUN" ]]; then
             sleep 3

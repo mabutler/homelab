@@ -103,7 +103,9 @@ funnel_tag_advice() {
     warn "this node is not tagged ${TAILSCALE_TAGS:-}, so the tailnet policy does"
     warn "not grant it the 'funnel' attribute — that is what Tailscale is asking"
     warn "you to approve. Apply the tag instead:"
-    warn "  sudo tailscale set --advertise-tags=${TAILSCALE_TAGS:-tag:server}"
+    warn "  cd /opt/stack && sudo ./run.sh --only 30"
+    warn "or directly (note: 'login', not 'set' — tagging is a re-auth):"
+    warn "  sudo tailscale login --advertise-tags=${TAILSCALE_TAGS:-tag:server}"
     warn "It RE-AUTHENTICATES the machine, so run it from tmux, LAN ssh, or the"
     warn "console — not from the Tailscale SSH session it will interrupt."
 }

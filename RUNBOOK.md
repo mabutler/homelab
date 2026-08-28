@@ -539,6 +539,11 @@ Recorded because each one cost real time and none of them are obvious.
   failed a healthy pool in `40-storage.sh`. Match `(fuse\.)?mergerfs`, and in
   general assert what a mount *is*, not what a version labels it. (The fstab
   fstype above is a separate thing and must stay `mergerfs`.)
+- **Tags are set with `tailscale login`, not `tailscale set`.** `set` has no
+  `--advertise-tags` flag: a tag changes who *owns* the node, so it needs a
+  re-authentication rather than a preference change. `tailscale up
+  --advertise-tags=... --force-reauth` also works but wants every other pref
+  restated to avoid resetting them.
 - **`nofail` hides mount failures from `mount -a`.** It exits 0 having skipped
   the entry. Correct for boot — a dead drive should not strand the host — but
   it means a check after `mount -a` must re-attempt the mount to see the error,
