@@ -39,6 +39,12 @@ c_lts_entry()    { grep -qF "Arch Linux, with Linux linux-lts'" /boot/grub/grub.
 c_fallback()     { grep -qF "Arch Linux, with Linux linux'" /boot/grub/grub.cfg; }
 c_ucode()        { pacman -Q intel-ucode; }
 c_ucode_loaded() { grep -qF 'intel-ucode.img' /boot/grub/grub.cfg; }
+# A pacman -Syu that includes a kernel replaces the module tree on disk while
+# the old kernel keeps running. Anything that needs to load a module it has not
+# already loaded then fails — tailscaled cannot get /dev/net/tun, for instance —
+# and it looks like a broken daemon rather than a pending reboot. Testing for
+# the directory tests the actual failure condition, not a version string.
+c_modules_present() { [[ -d "/usr/lib/modules/$(uname -r)" ]]; }
 
 check "running the LTS kernel ($(uname -r))"        c_lts_running
 check "linux-lts installed"                         c_lts_pkg

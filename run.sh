@@ -78,6 +78,16 @@ main() {
     done
     (( ${#selected[@]} > 0 )) || die "no bootstrap steps matched the given filters"
 
+    # Bootstrap steps start daemons, and a daemon that needs a not-yet-loaded
+    # module cannot get one after a kernel update until the machine reboots.
+    # Warn rather than refuse: most steps are unaffected, and you may have a
+    # good reason to press on.
+    if [[ ! -d "/usr/lib/modules/$(uname -r)" ]]; then
+        warn "the running kernel ($(uname -r)) no longer has its modules on disk —"
+        warn "a kernel update has landed since boot. Daemons needing a new module"
+        warn "will fail until you reboot."
+    fi
+
     [[ -n "$DRY_RUN" ]] && warn "dry run — nothing will be changed"
 
     local failed=''
