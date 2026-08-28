@@ -95,8 +95,36 @@ node_has_declared_tags() {
 # So: detect that specific case, and only that one. Over the LAN, at the
 # console, or inside tmux/screen — where the process outlives the connection —
 # it just happens.
+# SSH_CONNECTION is NOT simply readable here. sudo's env_reset drops it, so
+# under `sudo ./run.sh` it is unset — and unset would read as "not over the
+# tailnet", which is the permissive answer and exactly the wrong default.
+#
+# Walk up the process tree instead and take it from the first ancestor that has
+# it: the login shell sudo was invoked from. We are root by this point, so
+# /proc/<pid>/environ is readable.
+ssh_peer() {
+    local pid="$PPID" envdata line
+    while [[ -n "$pid" && "$pid" -gt 1 ]]; do
+        if [[ -r "/proc/$pid/environ" ]]; then
+            # Read fully, then match. `tr ... | grep -m1` would exit at the
+            # first match and SIGPIPE the producer, which pipefail then reports
+            # as failure *because* the match succeeded.
+            envdata="$(tr '\0' '\n' < "/proc/$pid/environ" 2>/dev/null || true)"
+            line="$(grep -m1 '^SSH_CONNECTION=' <<<"$envdata" || true)"
+            if [[ -n "$line" ]]; then
+                printf '%s' "${line#SSH_CONNECTION=}"
+                return 0
+            fi
+        fi
+        pid="$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ')"
+    done
+    return 1
+}
+
 peer_is_tailnet() {
-    local peer="${SSH_CONNECTION%% *}"
+    local conn peer
+    conn="${SSH_CONNECTION:-$(ssh_peer || true)}"
+    peer="${conn%% *}"
     # 100.64.0.0/10, the CGNAT range Tailscale assigns from.
     [[ "$peer" =~ ^100\.(6[4-9]|[7-9][0-9]|1[0-1][0-9]|12[0-7])\. ]]
 }
@@ -122,8 +150,8 @@ elif tailscale status >/dev/null 2>&1; then
         if peer_is_tailnet && ! in_multiplexer; then
             err "this node is not tagged $TAILSCALE_TAGS, and applying the tag"
             err "re-authenticates the machine — which would drop THIS session,"
-            err "leaving the rest of bootstrap unrun. You are connected over the"
-            err "tailnet (${SSH_CONNECTION%% *}) and not inside tmux."
+            err "leaving the rest of bootstrap unrun. You are connected from"
+            err "$(ssh_peer 2>/dev/null | cut -d' ' -f1), which is a tailnet address, and not inside tmux."
             err ""
             err "Reconnect over the LAN, or wrap this in tmux, then:"
             err "  cd /opt/stack && sudo ./run.sh --from 30"
