@@ -58,3 +58,8 @@ HC_HEARTBEAT_URL=""             # hourly
 HC_SNAPRAID_SYNC_URL=""         # nightly
 HC_SNAPRAID_SCRUB_URL=""        # weekly
 HC_SMART_URL=""                 # weekly SMART attribute snapshot
+HC_AUTOUPDATE_URL=""            # daily container auto-update
+
+# Any HC_* variable added here is written to /etc/homelab/alerting.env and
+# reachable as `hc-ping HC_WHATEVER_URL`. bootstrap/60-alerting.sh does not
+# keep its own list.
