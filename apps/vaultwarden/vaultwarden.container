@@ -1,0 +1,45 @@
+[Unit]
+Description=Vaultwarden — Bitwarden-compatible password server
+Documentation=https://github.com/dani-garcia/vaultwarden/wiki
+
+# A failed mount must stop this service, not be written around: without it,
+# podman would happily create /opt/appdata/vaultwarden on the root filesystem
+# and you would have a second, empty vault that looks like it works.
+RequiresMountsFor=/opt/appdata
+
+After=network-online.target
+Wants=network-online.target
+OnFailure=ntfy-alert@%n.service
+
+[Container]
+ContainerName=vaultwarden
+Image=docker.io/vaultwarden/server:latest
+
+# `latest` with auto-update on, deliberately, and this is the one container
+# where that is not laziness: Vaultwarden is the only service that will have a
+# public listener, so a stalled update here is a security incident rather than
+# staleness. Vaultwarden's release habits are conservative enough to trust.
+AutoUpdate=registry
+
+# Loopback only. Nothing reaches this except through `tailscale serve`, which
+# terminates TLS and forwards from the tailnet. Publishing on 0.0.0.0 would
+# expose it to the whole LAN in cleartext — and published container ports
+# bypass host firewall rules under netavark, so the binding IS the control.
+PublishPort=127.0.0.1:8222:80
+
+Volume=/opt/appdata/vaultwarden:/data:Z
+
+# Secrets live outside the repository and outside the data directory: restoring
+# a data backup must not silently restore an old ADMIN_TOKEN or DOMAIN.
+EnvironmentFile=/etc/homelab/apps/vaultwarden.env
+
+NoNewPrivileges=true
+
+[Service]
+Restart=always
+# First start pulls the image and initialises the SQLite database on a
+# Sandy Bridge i3; the default 90s is not always enough.
+TimeoutStartSec=300
+
+[Install]
+WantedBy=multi-user.target default.target

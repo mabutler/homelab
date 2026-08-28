@@ -382,6 +382,37 @@ read-only proxy in front of it, never the socket itself.
 
 ---
 
+## Applications
+
+Deployed with `deploy.sh`, which **symlinks** unit files from `apps/<name>/`
+into `/etc/containers/systemd/`. Nothing is copied, so there is never a
+deployed unit that has drifted from the repository — `git pull` then
+`systemctl restart <app>` is the whole update path.
+
+```bash
+cd /opt/stack
+sudo ./deploy.sh                # every app
+sudo ./deploy.sh vaultwarden    # one
+sudo ./deploy.sh --list         # what is linked, and to what
+sudo ./deploy.sh --remove NAME  # unlink; does not stop or delete anything
+```
+
+Deploying does not start anything. `systemctl start <app>` does.
+
+**Secrets live in `/etc/homelab/apps/<app>.env`, mode 0600** — outside the
+repository and outside the app's data directory, so restoring a data backup
+cannot silently restore a stale `DOMAIN` or admin token. `deploy.sh` refuses
+to link an app whose env file is missing or wrongly permissioned.
+
+Those files are not in git and not recoverable from the vault they configure.
+**Keep copies in your password manager.**
+
+| App | State | Notes |
+|---|---|---|
+| Vaultwarden | `/opt/appdata/vaultwarden` | [apps/vaultwarden/README.md](apps/vaultwarden/README.md) |
+
+---
+
 ## Verification
 
 ```bash
