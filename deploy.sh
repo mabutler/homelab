@@ -4,6 +4,7 @@
 #   ./deploy.sh                 every app in apps/
 #   ./deploy.sh vaultwarden     just this one
 #   ./deploy.sh --no-start      link and reload, but do not start anything
+#   ./deploy.sh --no-publish    start apps, but do not touch tailscale serve
 #   ./deploy.sh --remove NAME   unlink it (does not stop or delete anything)
 #   ./deploy.sh --list          what is deployed
 #
@@ -12,10 +13,18 @@
 # update path, and there is never a deployed copy that has drifted from the
 # repository.
 #
+# Deploying an app means: its state directories exist, its secrets are in place
+# with the right mode, its unit is linked and started, and it is REACHABLE.
+# That last one is here rather than in a manual step because `tailscale serve`
+# lives in tailscaled's state and does not survive a rebuild — see
+# lib/publish.sh and apps/<name>/serve.conf.
+#
 # Idempotent.
 
 # shellcheck source=lib/common.sh
 source "$(dirname -- "${BASH_SOURCE[0]}")/lib/common.sh"
+# shellcheck source=lib/publish.sh
+source "$(dirname -- "${BASH_SOURCE[0]}")/lib/publish.sh"
 
 QUADLET_DIR=/etc/containers/systemd
 SECRETS_DIR=/etc/homelab/apps
@@ -26,7 +35,7 @@ TMPFILES_SRC="$REPO_ROOT/system/tmpfiles"
 UNIT_GLOBS=(.container .network .volume .pod .kube .build .image)
 
 usage() {
-    sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'
 }
 
 list_apps() {
@@ -134,7 +143,7 @@ remove_app() {
 }
 
 main() {
-    local mode=deploy no_start=0
+    local mode=deploy no_start=0 no_publish=0
     local -a want=()
 
     while (( $# )); do
@@ -142,6 +151,7 @@ main() {
             --remove)   mode=remove ;;
             --list)     mode=list ;;
             --no-start) no_start=1 ;;
+            --no-publish) no_publish=1 ;;
             -h|--help) usage; return 0 ;;
             -v|--verbose) VERBOSE=1 ;;
             -*) usage >&2; die "unknown argument: $1" ;;
@@ -262,6 +272,26 @@ main() {
     done
 
     (( failed == 0 )) || die "$failed app(s) failed to start"
+
+    # Reachability. Every app that declares a serve.conf gets its Tailscale
+    # state converged to match it — after the service is confirmed up, because
+    # publishing something that is not running is how you end up debugging a
+    # 502 from a phone on cellular.
+    #
+    # This is not "set up once". It runs every deploy, so a rebuilt host walks
+    # out of run.sh + deploy.sh already reachable, with no step that lives only
+    # in a runbook.
+    if (( no_publish )); then
+        log "--no-publish: tailscale serve state left alone"
+        return 0
+    fi
+
+    PUBLISH_CHANGED=0
+    for app in "${want[@]}"; do
+        systemctl is-active --quiet "$app.service" 2>/dev/null || continue
+        publish_app "$app" "$APPS_DIR/$app"
+    done
+    (( PUBLISH_CHANGED )) || dbg "publishing already converged"
 }
 
 main "$@"

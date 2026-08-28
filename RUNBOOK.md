@@ -417,21 +417,57 @@ Those files are not in git and not recoverable from the vault they configure.
 |---|---|---|
 | Vaultwarden | `/opt/appdata/vaultwarden` | [apps/vaultwarden/README.md](apps/vaultwarden/README.md) |
 
+### Reachability is part of deploying
+
+Containers bind `127.0.0.1` and nothing else. What makes them reachable is
+`tailscale serve`, and that state lives in tailscaled — **it does not survive a
+rebuild.** So it is not a manual step. Each app declares it:
+
+```
+apps/<name>/serve.conf
+    SERVE_TARGET=http://127.0.0.1:8222   what to forward to
+    SERVE_PATH=/                         mount point on 443
+    FUNNEL=yes                           also expose to the public internet
+    FUNNEL_GUARD=funnel-guard.sh         veto script, run before opening the port
+```
+
+`deploy.sh` converges the machine to match, every run, after confirming the
+service is up. `--no-publish` skips it. `lib/publish.sh` is the implementation.
+
+Two pieces of state this host depends on and cannot create, applied once in the
+Tailscale admin console and surviving every rebuild:
+
+1. **DNS → HTTPS Certificates**, enabled. Without it nothing serves over TLS.
+   `deploy.sh` stops with this instruction rather than a confusing cert error.
+2. **Access Controls**, the policy from `apps/vaultwarden/tailnet-policy.hujson`
+   — `tagOwners` for `tag:server` plus the `funnel` node attribute.
+
+The node claims that tag at join time from `TAILSCALE_TAGS` in `host.conf`,
+because advertising a tag re-authenticates the machine and join is the one
+moment that costs nothing.
+
 ### The one public service
 
-Vaultwarden is the only thing on this host reachable from outside the tailnet,
-via `tools/enable-funnel.sh` → Tailscale Funnel on 443. Funnel is enabled per
-**port**, not per path, so keep 443 exclusively Vaultwarden: anything else ever
-mounted there becomes public too. Give other apps a different `tailscale serve`
-port.
+Vaultwarden is the only thing reachable from outside the tailnet. Funnel is
+enabled per **port**, not per path, so 443 stays exclusively Vaultwarden:
+anything else ever mounted there becomes public with it. Other apps get a
+different `tailscale serve` port.
 
-`enable-funnel.sh` refuses to publish if Vaultwarden is down, `SIGNUPS_ALLOWED`
-is true, `ADMIN_TOKEN` is set, `DOMAIN` does not match this node's MagicDNS
-name, or `tailscale serve` is not already forwarding to `127.0.0.1:8222`.
+Before opening the port, `deploy.sh` runs `apps/vaultwarden/funnel-guard.sh`,
+which vetoes on: `SIGNUPS_ALLOWED=true`, `ADMIN_TOKEN` set, or `DOMAIN` not
+matching this node's MagicDNS name. A veto is **not a deploy failure** — the
+tailnet mount still goes up, only the public door waits, and the next deploy
+after you fix the cause opens it.
 
-Those gate the **initial publish only**. Nothing stops you toggling any of them
-afterwards — the script is not in that loop — so a refusal costs an edit and a
-restart, not a workflow.
+`tools/enable-funnel.sh` is the manual path for what is not a deploy:
+
+```bash
+sudo ./tools/enable-funnel.sh --off vaultwarden   # tailnet-only, temporarily
+sudo ./tools/enable-funnel.sh vaultwarden         # and back
+```
+
+`--off` leaves `tailscale serve` alone, so tailnet access is unaffected. The
+next `deploy.sh` republishes, because `serve.conf` still says `FUNNEL=yes`.
 
 Adding a user means opening registration, and with Funnel live that window is
 open to the internet rather than the tailnet. Minutes, not days. The procedure,
@@ -498,6 +534,14 @@ Recorded because each one cost real time and none of them are obvious.
   case-insensitively.
 - **`sshd -t` proves the file parses, not that it is read.** A drop-in that is
   never included parses perfectly. Assert the effective config.
+- **Vaultwarden's `DATABASE_URL` needs a scheme.** A bare path is not a URL;
+  it must be `sqlite:///data/db.sqlite3` — three slashes, `sqlite://` plus the
+  absolute path. Without it the container exits at startup rather than falling
+  back to a default. Fixed in `vaultwarden.env.example`.
+- **A container listening on `127.0.0.1` is reachable from nowhere until
+  `tailscale serve` is up.** The loopback bind is deliberate, but it means
+  "the service is running" and "I can load the page" are two separate
+  problems. Check `tailscale serve status` before debugging the app.
 
 ---
 

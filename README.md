@@ -62,16 +62,17 @@ homelab/
 ├── host.conf               GITIGNORED — the only per-machine file
 ├── drives.conf             committed — serial → label → role
 ├── lib/common.sh           logging, guards, config loading, install helpers
+├── lib/publish.sh          serve.conf → live tailscale serve/funnel state
 ├── install/                run from the live ISO. destructive. once.
 ├── bootstrap/              run on the installed system. idempotent.
 │                           10 base · 15 aur · 20 snapshots · 30 access
 │                           40 storage · 50 snapraid · 60 alerting · 70 podman
 ├── files/                  everything that becomes host configuration
-├── apps/                   container units (later stage)
+├── apps/<name>/            unit · <name>.env.example · serve.conf · README
 ├── tools/                  check-drives.sh, verify.sh, smart-snapshot.sh, …
 ├── RUNBOOK.md              operating notes — read this when something breaks
 ├── docs/
-├── deploy.sh               symlink app units and tmpfiles, daemon-reload
+├── deploy.sh               link units, start them, make them reachable
 └── run.sh                  runs bootstrap/ in order
 ```
 
@@ -119,9 +120,15 @@ once.
    key and sshd are configured so the first boot is reachable without a
    keyboard. `03` does not reboot; it prints the next command and exits.
 6. Reboot, remove the USB, SSH back in.
-7. `cd /opt/stack && sudo ./run.sh`
-8. `tailscale up --ssh`, authenticate, verify from an off-network device.
-9. `tools/verify.sh`
+7. `cd /opt/stack && sudo ./run.sh` — pauses once for you to authenticate the
+   machine on the tailnet, then continues on its own.
+8. `tools/verify.sh`
+9. `sudo ./deploy.sh` — starts every app and makes it reachable.
+
+Steps 7–9 assume two pieces of Tailscale state that belong to the tailnet
+rather than to this machine, and so are applied once and never again: **HTTPS
+Certificates** enabled under DNS, and the policy from
+`apps/vaultwarden/tailnet-policy.hujson` under Access Controls.
 
 ---
 
@@ -184,6 +191,13 @@ minimal package set, nothing that builds kernel modules.
 **Access**: sshd keys-only with no root login and no password auth; Tailscale
 with `--ssh` as an independent second path to a shell. Nothing forwarded at
 the router.
+
+**Reachability**: services bind `127.0.0.1` and are exposed by `tailscale
+serve`, declared per app in `apps/<name>/serve.conf` and converged by
+`deploy.sh` on every run — because that state lives in tailscaled and does not
+survive a rebuild. Vaultwarden additionally sets `FUNNEL=yes`, the one
+deliberate public exception, gated by a per-app guard script that runs
+immediately before the port opens.
 
 **Monitoring**: `smartd` on all five drives with persistent state files —
 without them smartd re-baselines on every restart and will not report a change

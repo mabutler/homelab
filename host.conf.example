@@ -33,6 +33,25 @@ TIMEZONE=""                     # timedatectl list-timezones   e.g. America/New_
 LOCALE="en_US.UTF-8"
 KEYMAP="us"
 
+# --- tailnet ---------------------------------------------------------------
+
+# Tags advertised when this node JOINS the tailnet. Optional; leave empty for
+# an untagged node owned by your user account.
+#
+# Set this if anything on the host will ever be published with Tailscale
+# Funnel. A tagged node is owned by the tailnet rather than by you, so the
+# policy can deny it outbound access to everything — which is what stops a
+# compromise of a public-facing container from becoming a foothold on the
+# tailnet. Tagged nodes also never expire their keys.
+#
+# Applied at join time on purpose: advertising a tag re-authenticates the
+# machine, which is fine while you are already authenticating and disruptive
+# later. Changing this on a host that is already up is a manual step.
+#
+# The tag must have an owner in the tailnet policy before it can be claimed —
+# see apps/vaultwarden/tailnet-policy.hujson.
+TAILSCALE_TAGS=""               # e.g. tag:server
+
 # --- storage ---------------------------------------------------------------
 
 # Size of the Btrfs root partition. The remainder of the SSD becomes the ext4

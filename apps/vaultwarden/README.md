@@ -49,45 +49,55 @@ cd /opt/stack && sudo ./deploy.sh vaultwarden
 ```
 
 `deploy.sh` links the unit, reloads systemd so Quadlet generates the service,
-starts it, and reports whether it actually came up. Boot-time startup needs no
-`systemctl enable` — Quadlet honours the `[Install]` section in the
-`.container` file.
+starts it, reports whether it actually came up, **and publishes it** — see
+[`serve.conf`](serve.conf). Boot-time startup needs no `systemctl enable` —
+Quadlet honours the `[Install]` section in the `.container` file.
 
 First start pulls the image and initialises SQLite; on this hardware give it a
 minute. `journalctl -u vaultwarden -f` if you want to watch.
 
-### 3. Publish it on the tailnet
+Vaultwarden binds `127.0.0.1:8222` and nothing else, so `tailscale serve` is
+what makes it reachable at all. That is not a manual step: `serve.conf` declares
+it and every deploy converges the machine to match, because serve state lives in
+tailscaled and does not survive a rebuild.
 
-Vaultwarden listens on `127.0.0.1:8222` only. `tailscale serve` terminates TLS
-and forwards from the tailnet:
+Real HTTPS matters here specifically — the official Bitwarden clients refuse to
+talk to a server over plain HTTP — which is why the tailnet's **HTTPS
+Certificates** toggle (admin console → DNS) has to be on. `deploy.sh` stops with
+that instruction if it is not.
+
+On a first-ever build it will report the tailnet mount and then decline to open
+the public door, because `SIGNUPS_ALLOWED` is still true. That is the intended
+sequence, not a failure — continue to step 3.
 
 ```bash
-sudo tailscale serve --bg https / http://127.0.0.1:8222
-tailscale serve status
+tailscale serve status     # confirm the mount
 ```
-
-Real HTTPS matters here specifically: the official Bitwarden clients refuse to
-talk to a server over plain HTTP, so this is not cosmetic.
 
 Then open `https://fidelacchius.<tailnet>.ts.net` from a device on the tailnet.
 
-### 4. Create both accounts, then close the door
+### 3. Create both accounts, then close the door
 
 Register your account and your partner's through the web vault. Then:
 
 ```bash
 sudo vim /etc/homelab/apps/vaultwarden.env   # SIGNUPS_ALLOWED=false
 sudo systemctl restart vaultwarden
+sudo ./deploy.sh vaultwarden                 # now it publishes
 ```
 
 Verify it took: the registration page should refuse.
 
-### 5. Point the clients at it
+That third command is the whole Funnel step. On a *rebuild* — where restored
+state already contains the accounts and `SIGNUPS_ALLOWED` is already false —
+none of this happens and `deploy.sh` publishes on the first run.
+
+### 4. Point the clients at it
 
 In every Bitwarden app — desktop, browser extension, phone — use
 **Self-hosted** on the login screen and give it the same `DOMAIN` URL.
 
-### 6. A Family organisation
+### 5. A Family organisation
 
 Create an Organization in the web vault for credentials you both need. Personal
 vaults stay personal; shared things live there.
@@ -132,13 +142,17 @@ Confirm it closed again: the registration page should refuse.
 
 **Once Funnel is on, that window is open to the internet, not to the tailnet.**
 Minutes, not days — and do not leave it true overnight because the person is
-"going to get to it tomorrow". If they are a tailnet device, turn Funnel off
-for the duration instead:
+"going to get to it tomorrow". If they are on a tailnet device, close the public
+door for the duration instead:
 
 ```bash
-sudo tailscale funnel --https=443 off     # ... register ...
-sudo tailscale funnel --bg http://127.0.0.1:8222
+cd /opt/stack
+sudo ./tools/enable-funnel.sh --off vaultwarden    # ... they register ...
+sudo ./tools/enable-funnel.sh vaultwarden
 ```
+
+Note that a `deploy.sh` run in between will republish it — `serve.conf` is still
+the declaration, and `--off` is a temporary override of it.
 
 `INVITATIONS_ALLOWED` with an Organization invite is the better long-term
 answer and does not require opening registration at all; it needs SMTP
@@ -172,34 +186,59 @@ ritual.
 
 ## The public door — Funnel
 
-Publishing this to the open internet is a scripted, gated step:
+`FUNNEL=yes` in [`serve.conf`](serve.conf) is the declaration that this app is
+public, and `deploy.sh` acts on it. There is no separate publish step and
+nothing to remember after a rebuild.
+
+Two pieces of **tailnet** state have to exist first. Both are applied once in
+the admin console, belong to the tailnet rather than to this machine, and
+therefore survive every rebuild:
+
+1. **DNS → HTTPS Certificates**, enabled. Without it nothing can be served over
+   TLS from this node at all — not even on the tailnet.
+2. The policy in [`tailnet-policy.hujson`](tailnet-policy.hujson) under Access
+   Controls, defining `tagOwners` for `tag:server` and granting it the `funnel`
+   attribute. There is no CLI for this; the console is authoritative and the
+   file here is a reference copy to keep in sync by hand.
+
+The node claims that tag at **join** time, from `TAILSCALE_TAGS` in `host.conf`
+— see [Why tagging matters](#why-tagging-matters).
+
+### The guard
+
+Before the port opens, `deploy.sh` runs
+[`funnel-guard.sh`](funnel-guard.sh), which vetoes publishing if
+`SIGNUPS_ALLOWED` is true, `ADMIN_TOKEN` is set, or `DOMAIN` does not match this
+node's real MagicDNS name.
+
+A veto is **not a deploy failure**. The tailnet mount still goes up, so the app
+is reachable; only the public door stays shut, and the next deploy after you fix
+the cause opens it. That is what makes a from-scratch build land somewhere sane:
+no accounts yet means registration is open, which means Funnel waits.
+
+It re-decides on every deploy rather than once at setup, so a vault that drifts
+into an unsafe state stops being republished.
+
+### Doing it by hand
+
+[`tools/enable-funnel.sh`](../../tools/enable-funnel.sh) is the manual path, for
+the cases that are not a deploy:
 
 ```bash
-cd /opt/stack && sudo ./tools/enable-funnel.sh
+sudo ./tools/enable-funnel.sh --off vaultwarden   # tailnet-only, temporarily
+sudo ./tools/enable-funnel.sh vaultwarden         # and back
 ```
 
-**Before it will do anything**, apply the tailnet policy in
-[`tailnet-policy.hujson`](tailnet-policy.hujson) in the Tailscale admin console
-(Access Controls). There is no CLI for that — the console is authoritative and
-the file here is a reference copy to keep in sync by hand.
+It runs the same guard and asks for a typed confirmation. `--off` leaves
+`tailscale serve` alone, so tailnet access is unaffected — but the next
+`deploy.sh` will publish again, because `serve.conf` still says `FUNNEL=yes`.
+Change the declaration if you mean it permanently.
 
-It refuses unless: Vaultwarden is running, `SIGNUPS_ALLOWED` is false,
-`ADMIN_TOKEN` is unset, `DOMAIN` matches this node's real MagicDNS name, and
-`tailscale serve` is already forwarding to `127.0.0.1:8222`. Then it tags the
-node, enables Funnel on 443, and prints the verification gate.
+### What no script can check
 
-**Those gate publishing, not the settings themselves.** Opening registration or
-the admin panel later needs nothing from this script — see
-[Adding someone later](#adding-someone-later). The refusals only mean the door
-is not opened *while* something is wide open behind it.
-
-Softer notes — currently just an unset `LOGIN_RATELIMIT_SECONDS` — are printed
-on the confirmation screen, directly above the typed `PUBLISH <host>` prompt,
-without blocking.
-
-Two things it cannot check, and they are the bulk of the real protection:
 **TOTP 2FA on both accounts** (enforced by Organization policy) and **Argon2id
-KDF with raised iterations**. Do both in the web vault first.
+KDF with raised iterations**. Do both in the web vault. They are the bulk of the
+real protection and nothing here can verify them.
 
 ### Why tagging matters
 
@@ -208,9 +247,15 @@ untagged node would be a foothold on the whole tailnet. A tagged node is owned
 by the tailnet rather than by you, so it is not in `autogroup:member` and gets
 no outbound access to anything. Your phone reaches it; it reaches nothing.
 
-Applying the tag **re-authenticates the machine**, so run the script from
-`tmux`, from LAN ssh, or at the console — not from the Tailscale SSH session
-you are about to interrupt.
+Applying the tag **re-authenticates the machine**, which is why it happens at
+join time in `bootstrap/30-access.sh` and not later: you are already
+authenticating there, so it costs nothing, and the node is tagged before
+anything is ever published from it.
+
+Changing the tag on a host that is already up is a deliberate manual step —
+`30-access.sh` warns about a mismatch but will not force a re-auth on you
+mid-run. Do it from `tmux`, LAN ssh, or the console, not from the Tailscale SSH
+session it is about to interrupt.
 
 Tagged nodes also have no key expiry, which makes the "disable key expiry"
 toggle moot.

@@ -52,24 +52,59 @@ fi
 # ---------------------------------------------------------------------------
 # Tailscale
 # ---------------------------------------------------------------------------
-pkg_install tailscale
+# jq comes along here rather than at the app layer: everything that reads
+# Tailscale's state — deploy.sh publishing, verify.sh, the app funnel guards —
+# parses `--json` output, and none of them should be the thing that installs a
+# package at the moment it needs it.
+pkg_install tailscale jq
 unit_enable --now tailscaled.service
+
+# Tagging happens HERE, at join time, and not later.
+#
+# `tailscale set --advertise-tags` re-authenticates the machine, which is a
+# rude thing to do to an SSH session halfway through deploying an app. At join
+# time you are already authenticating, so it costs nothing — and it means the
+# node is tagged before anything is ever published from it, rather than being
+# retrofitted afterwards.
+#
+# A tagged node is owned by the tailnet rather than by you: it is not in
+# autogroup:member, so the policy gives it no outbound access to anything. That
+# is the containment for "a Vaultwarden compromise becomes a tailnet foothold".
+# It also has no key expiry, which makes the "disable key expiry" toggle moot.
+#
+# The policy in apps/vaultwarden/tailnet-policy.hujson must already be applied
+# in the admin console — it defines tagOwners for the tag and grants the funnel
+# attribute. There is no CLI for that, but it is tailnet state: applied once, it
+# survives every rebuild of this machine.
+tags_arg=()
+if [[ -n "${TAILSCALE_TAGS:-}" ]]; then
+    tags_arg=(--advertise-tags="$TAILSCALE_TAGS")
+fi
 
 if [[ -n "$DRY_RUN" ]]; then
     log "would join the tailnet as $TARGET_HOSTNAME (skipped in a dry run)"
 elif tailscale status >/dev/null 2>&1; then
     dbg "already on the tailnet"
     # Converge the settings that matter even on a node that joined earlier —
-    # `tailscale set` is the idempotent half of `tailscale up`.
+    # `tailscale set` is the idempotent half of `tailscale up`. Tags are left
+    # out of this path on purpose: re-advertising them on a live node forces a
+    # re-authentication, so changing the tag of a running host is a deliberate
+    # act, not something a re-run of bootstrap does to you.
     run tailscale set --ssh=true --hostname="$TARGET_HOSTNAME"
+    if [[ -n "${TAILSCALE_TAGS:-}" ]] \
+       && ! grep_output "$TAILSCALE_TAGS" tailscale status --json; then
+        warn "this node is not tagged $TAILSCALE_TAGS."
+        warn "Applying it re-authenticates the machine, so it is not done here:"
+        warn "  sudo tailscale set --advertise-tags=$TAILSCALE_TAGS"
+    fi
 else
-    log "joining the tailnet as $TARGET_HOSTNAME"
+    log "joining the tailnet as $TARGET_HOSTNAME${TAILSCALE_TAGS:+ ($TAILSCALE_TAGS)}"
     warn "a login URL will print below — open it, approve this machine, and"
     warn "this script continues on its own once you do"
     # --ssh turns on Tailscale SSH, the second door. --hostname pins the
     # MagicDNS name, which matters later: the Stage 2 migration renames nodes
     # so the new server inherits this name and every client keeps working.
-    run tailscale up --ssh --hostname="$TARGET_HOSTNAME"
+    run tailscale up --ssh --hostname="$TARGET_HOSTNAME" ${tags_arg[@]+"${tags_arg[@]}"}
 fi
 
 # ---------------------------------------------------------------------------
@@ -99,10 +134,13 @@ cat >&2 <<EOF
   Tailscale SSH and sshd are separate doors. Confirm both, because the
   value of having two is that you never test them at the same time again.
 
-  Not done here, on purpose: tagging this node tag:server and writing the
-  tailnet ACL policy. That belongs with the Vaultwarden Funnel work, and
-  applying a tag re-authenticates the machine — a bad thing to do casually
-  from an SSH session you would like to keep.
+  Tailnet state this host depends on but cannot create, applied once in
+  the admin console and surviving every rebuild:
+
+    1. DNS -> HTTPS Certificates, enabled. Without it nothing can be
+       served over TLS from this node.
+    2. The policy in apps/vaultwarden/tailnet-policy.hujson, defining
+       tagOwners for ${TAILSCALE_TAGS:-tag:server} and granting it "funnel".
 EOF
 
 ok "access configured"
