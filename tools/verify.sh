@@ -203,8 +203,19 @@ fi
 
 section "Storage pool — bootstrap/40-storage.sh"
 if findmnt -no TARGET /mnt/pool >/dev/null 2>&1; then
-    c_pool_fs() { [[ "$(findmnt -no FSTYPE /mnt/pool)" == fuse.mergerfs ]]; }
+    c_pool_fs()    { [[ "$(findmnt -no FSTYPE /mnt/pool)" == fuse.mergerfs ]]; }
+    c_fstab_block(){ grep -qF 'homelab pool mounts' /etc/fstab; }
+    # Both markers or neither. One without the other means the next run of
+    # 40-storage.sh would eat everything after the begin marker.
+    c_markers_ok() {
+        local b=0 e=0
+        grep -qF '>>> homelab pool mounts' /etc/fstab && b=1
+        grep -qF '<<< homelab pool mounts' /etc/fstab && e=1
+        (( b == e ))
+    }
     check "/mnt/pool is mergerfs"                   c_pool_fs
+    check "fstab has the managed pool block"        c_fstab_block
+    check "the managed block's markers are intact"  c_markers_ok
     for _s in "${DRIVE_SERIALS[@]}"; do
         [[ "${DRIVE_ROLE[$_s]}" == ssd ]] && continue
         _lbl="${DRIVE_LABEL[$_s]}"
