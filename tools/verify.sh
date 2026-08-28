@@ -185,8 +185,12 @@ section "Tailscale — bootstrap/30-access.sh"
 if have tailscale; then
     c_ts_active(){ systemctl is-active --quiet tailscaled.service; }
     c_ts_up()    { tailscale status >/dev/null 2>&1; }
+    # A tailnet address in 100.64.0.0/10 is the concrete evidence that the node
+    # actually joined, rather than merely having the daemon running.
+    c_ts_ip()    { grep_output '^100\.' tailscale ip -4; }
     check "tailscaled is running"                   c_ts_active
     check "the tailnet is up"                       c_ts_up
+    check "the node has a tailnet address"          c_ts_ip
 else
     pending "not run yet — tailscale"
 fi
