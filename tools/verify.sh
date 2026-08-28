@@ -291,10 +291,23 @@ fi
 
 section "Podman — bootstrap/70-podman.sh"
 if have podman; then
-    c_pod_socket(){ systemctl is-enabled --quiet podman.socket; }
-    c_pod_update(){ systemctl is-enabled --quiet podman-auto-update.timer; }
+    c_pod_info()   { podman info; }
+    c_pod_socket() { systemctl is-enabled --quiet podman.socket; }
+    c_pod_update() { systemctl is-active --quiet podman-auto-update.timer; }
+    c_pod_prune()  { systemctl is-active --quiet podman-image-prune.timer; }
+    # The timer must go through the wrapper, or updates apply silently with no
+    # ntfy report and no Healthchecks ping.
+    c_pod_wrapper(){ grep_output 'podman-auto-update-run' \
+                        systemctl show -p ExecStart --value podman-auto-update.service; }
+    c_pod_store()  { findmnt -no TARGET /var/lib/containers; }
+    c_quadlet()    { [[ -d /etc/containers/systemd ]]; }
+    check "podman info succeeds"                    c_pod_info
+    check "/var/lib/containers is its own subvolume" c_pod_store
+    check "the Quadlet directory exists"            c_quadlet
     check "podman.socket is enabled"                c_pod_socket
-    check "podman-auto-update.timer is enabled"     c_pod_update
+    check "podman-auto-update.timer is active"      c_pod_update
+    check "auto-update runs through the wrapper"    c_pod_wrapper
+    check "podman-image-prune.timer is active"      c_pod_prune
 else
     pending "not run yet — podman, socket, auto-update"
 fi

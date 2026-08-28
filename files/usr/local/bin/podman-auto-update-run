@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# podman-auto-update-run — run podman's auto-update and report what it did.
+#
+# Quiet when nothing changed, loud when something did. A daily "nothing
+# happened" push is how you stop reading the notifications, and then you miss
+# the one that mattered.
+#
+# The one exception worth naming: Vaultwarden. It is the only service with a
+# public listener, so a stalled auto-update there is a security problem rather
+# than mere staleness. Its image being current belongs in the quarterly ritual.
+
+set -euo pipefail
+
+out="$(podman auto-update 2>&1)" && rc=0 || rc=$?
+host="$(hostnamectl --static 2>/dev/null || uname -n)"
+
+printf '%s\n' "$out"
+
+if (( rc != 0 )); then
+    /usr/local/bin/ntfy-alert "$host: container auto-update FAILED" \
+        "$out" high "rotating_light" || true
+    # Deliberately not pinged on failure: letting the check go silent means the
+    # dead-man switch reports it even if the push above never got out.
+    exit "$rc"
+fi
+
+# podman prints a table; a row whose status is not "false" means it acted.
+if printf '%s\n' "$out" | grep -qiE '(true|rolled back|pending)'; then
+    /usr/local/bin/ntfy-alert "$host: containers updated" "$out" default "package" || true
+fi
+
+exec /usr/local/bin/hc-ping HC_AUTOUPDATE_URL

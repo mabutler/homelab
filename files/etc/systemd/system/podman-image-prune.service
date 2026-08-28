@@ -1,0 +1,12 @@
+[Unit]
+Description=Remove container images nothing references
+OnFailure=ntfy-alert@%n.service
+
+[Service]
+Type=oneshot
+Nice=15
+IOSchedulingClass=idle
+# Every auto-update leaves the previous image behind. Left alone they fill the
+# 50 GiB root filesystem, quietly, over months. -a removes unreferenced images
+# rather than only dangling layers, which is what actually reclaims the space.
+ExecStart=/usr/bin/podman image prune -af
