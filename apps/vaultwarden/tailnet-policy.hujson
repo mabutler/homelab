@@ -1,0 +1,62 @@
+// Tailnet ACL policy — paste into the Tailscale admin console
+// (Access Controls). Tailscale accepts HuJSON, so these comments survive.
+//
+// This file is a REFERENCE COPY. The console holds the authoritative version;
+// there is no CLI to push it. Keep them in sync by hand, and update this file
+// whenever you change the real one — a stale copy is worse than none.
+//
+// The point of this policy is containment. A container is not a security
+// boundary, so a Vaultwarden compromise on an untagged node would be a foothold
+// on the entire tailnet. Tagging is what prevents that.
+{
+  // A tag is owned by the tailnet, not by a person. That is the whole trick:
+  // a tagged node is NOT a member of autogroup:member, so the rule below gives
+  // it no outbound access to anything.
+  "tagOwners": {
+    "tag:server": ["autogroup:admin"],
+  },
+
+  "acls": [
+    // People reach everything. The server reaches nothing.
+    // Your phone and laptop can talk to fidelacchius; fidelacchius cannot
+    // initiate a connection to your laptop, or to any future node.
+    {
+      "action": "accept",
+      "src":    ["autogroup:member"],
+      "dst":    ["*:*"],
+    },
+  ],
+
+  "ssh": [
+    // Tailscale SSH, scoped to non-root. sshd on the LAN is unaffected and
+    // remains the independent second door.
+    {
+      "action": "accept",
+      "src":    ["autogroup:member"],
+      "dst":    ["tag:server"],
+      "users":  ["autogroup:nonroot"],
+    },
+  ],
+
+  "nodeAttrs": [
+    // Funnel is off unless a node is explicitly granted it. This is the line
+    // that lets Vaultwarden be published to the public internet.
+    {
+      "target": ["tag:server"],
+      "attr":   ["funnel"],
+    },
+  ],
+}
+
+// ---------------------------------------------------------------------------
+// Consequences worth remembering
+//
+// 1. Tagged nodes have NO KEY EXPIRY. The "disable key expiry" toggle you would
+//    otherwise set by hand becomes moot once tag:server is applied.
+//
+// 2. When the barn backup machine arrives, tag:server's lack of outbound access
+//    means restic cannot reach it until you add ONE narrow rule:
+//
+//      { "action": "accept", "src": ["tag:server"], "dst": ["tag:backup:8000"] }
+//
+//    Resist widening it back to "*:*". That restriction is doing the work.

@@ -4,7 +4,7 @@ Bitwarden-compatible password server. First application on the stack,
 deliberately: every account created after this one gets stored in it.
 
 Tailnet-only for now. Public exposure via Tailscale Funnel is a separate,
-scoped step — see [Later: the public door](#later-the-public-door).
+scoped step — see [The public door](#the-public-door--funnel).
 
 ---
 
@@ -12,13 +12,22 @@ scoped step — see [Later: the public door](#later-the-public-door).
 
 ### 1. The secrets file
 
+Same contract as `host.conf`: the repository ships an example, you make the
+real file. `deploy.sh` will stop and print exactly this if you skip it.
+
 ```bash
-sudo install -Dm600 /dev/null /etc/homelab/apps/vaultwarden.env
-sudo cp /opt/stack/apps/vaultwarden/vaultwarden.env.example \
-        /etc/homelab/apps/vaultwarden.env
-sudo chmod 600 /etc/homelab/apps/vaultwarden.env
-sudo vim /etc/homelab/apps/vaultwarden.env
+cd /opt/stack
+sudo cp apps/vaultwarden/vaultwarden.env.example \
+        apps/vaultwarden/vaultwarden.env
+sudo vim apps/vaultwarden/vaultwarden.env
 ```
+
+Permissions and the symlink into `/etc/homelab/apps/` are handled for you on
+the next `deploy.sh` — you never need to `chmod` or `ln` anything.
+
+The file you edit lives in the repo (gitignored) next to the unit that
+consumes it; the symlink is what makes every secret on this host discoverable
+in one directory — one thing to back up, one thing to restore.
 
 `DOMAIN` is the one value you cannot casually change later — it drives
 WebAuthn's relying-party ID, so security keys registered against one domain
@@ -33,17 +42,19 @@ Leave `SIGNUPS_ALLOWED=true` for now. Leave `ADMIN_TOKEN` commented out.
 **Put a copy of this file in your current password manager.** You cannot
 restore it from the vault it configures.
 
-### 2. Deploy and start
+### 2. Deploy
 
 ```bash
-cd /opt/stack
-sudo ./deploy.sh vaultwarden
-sudo systemctl start vaultwarden
-journalctl -u vaultwarden -f
+cd /opt/stack && sudo ./deploy.sh vaultwarden
 ```
 
-First start pulls the image and initialises SQLite; on this hardware give it
-a minute.
+`deploy.sh` links the unit, reloads systemd so Quadlet generates the service,
+starts it, and reports whether it actually came up. Boot-time startup needs no
+`systemctl enable` — Quadlet honours the `[Install]` section in the
+`.container` file.
+
+First start pulls the image and initialises SQLite; on this hardware give it a
+minute. `journalctl -u vaultwarden -f` if you want to watch.
 
 ### 3. Publish it on the tailnet
 
@@ -104,6 +115,35 @@ sudo sqlite3 /opt/appdata/vaultwarden/db.sqlite3 ".backup '/tmp/vw.sqlite3'"
 
 That becomes a pre-hook in the restic job at Phase 4.
 
+### Adding someone later
+
+Registration is closed in steady state, so adding an account is a deliberate
+open-register-close cycle:
+
+```bash
+sudo vim /etc/homelab/apps/vaultwarden.env   # SIGNUPS_ALLOWED=true
+sudo systemctl restart vaultwarden
+# they register at the DOMAIN URL
+sudo vim /etc/homelab/apps/vaultwarden.env   # SIGNUPS_ALLOWED=false
+sudo systemctl restart vaultwarden
+```
+
+Confirm it closed again: the registration page should refuse.
+
+**Once Funnel is on, that window is open to the internet, not to the tailnet.**
+Minutes, not days — and do not leave it true overnight because the person is
+"going to get to it tomorrow". If they are a tailnet device, turn Funnel off
+for the duration instead:
+
+```bash
+sudo tailscale funnel --https=443 off     # ... register ...
+sudo tailscale funnel --bg http://127.0.0.1:8222
+```
+
+`INVITATIONS_ALLOWED` with an Organization invite is the better long-term
+answer and does not require opening registration at all; it needs SMTP
+configured, which this deployment does not have yet.
+
 ### The admin panel
 
 Off by default, deliberately. To use it, uncomment `ADMIN_TOKEN` with an
@@ -130,37 +170,69 @@ ritual.
 
 ---
 
-## Later: the public door
+## The public door — Funnel
 
-Not done yet, and deliberately separate. Funnel publishes this to the open
-internet so it is reachable from a work PC that cannot join the tailnet.
+Publishing this to the open internet is a scripted, gated step:
 
-Before turning it on, all of this has to happen together:
+```bash
+cd /opt/stack && sudo ./tools/enable-funnel.sh
+```
 
-1. **Tag the node `tag:server` and write real tailnet ACLs.** A container is
-   not a security boundary — a Vaultwarden compromise on an untagged node is a
-   foothold on the whole tailnet. A tagged node is not owned by a user, so it
-   gets no outbound tailnet access. That is the containment.
-   Tagging re-authenticates the machine: do it from a session you can afford
-   to lose, and confirm you can still get back in.
-2. **Enforce TOTP 2FA on both accounts**, and raise the KDF to Argon2id in
-   Settings → Security → Keys. Five minutes, and the bulk of the real
-   protection.
-3. **Unset `ADMIN_TOKEN`.**
-4. `tailscale funnel --bg http://127.0.0.1:8222`, on port 443.
-5. **Verify from cellular with Tailscale off**, and from the work PC, before
-   relying on it.
+**Before it will do anything**, apply the tailnet policy in
+[`tailnet-policy.hujson`](tailnet-policy.hujson) in the Tailscale admin console
+(Access Controls). There is no CLI for that — the console is authoritative and
+the file here is a reference copy to keep in sync by hand.
 
-**The gotcha to remember: Funnel is enabled per _port_, not per path.** Anything
-else ever mounted on that port becomes public too. Keep 443 exclusively
-Vaultwarden; if another app ever wants `tailscale serve`, give it a different
-port so a future you cannot accidentally publish Homepage.
+It refuses unless: Vaultwarden is running, `SIGNUPS_ALLOWED` is false,
+`ADMIN_TOKEN` is unset, `DOMAIN` matches this node's real MagicDNS name, and
+`tailscale serve` is already forwarding to `127.0.0.1:8222`. Then it tags the
+node, enables Funnel on 443, and prints the verification gate.
 
-`fail2ban` is not worth adding: behind Funnel, Vaultwarden sees the Tailscale
+**Those gate publishing, not the settings themselves.** Opening registration or
+the admin panel later needs nothing from this script — see
+[Adding someone later](#adding-someone-later). The refusals only mean the door
+is not opened *while* something is wide open behind it.
+
+Softer notes — currently just an unset `LOGIN_RATELIMIT_SECONDS` — are printed
+on the confirmation screen, directly above the typed `PUBLISH <host>` prompt,
+without blocking.
+
+Two things it cannot check, and they are the bulk of the real protection:
+**TOTP 2FA on both accounts** (enforced by Organization policy) and **Argon2id
+KDF with raised iterations**. Do both in the web vault first.
+
+### Why tagging matters
+
+A container is not a security boundary. A Vaultwarden compromise on an
+untagged node would be a foothold on the whole tailnet. A tagged node is owned
+by the tailnet rather than by you, so it is not in `autogroup:member` and gets
+no outbound access to anything. Your phone reaches it; it reaches nothing.
+
+Applying the tag **re-authenticates the machine**, so run the script from
+`tmux`, from LAN ssh, or at the console — not from the Tailscale SSH session
+you are about to interrupt.
+
+Tagged nodes also have no key expiry, which makes the "disable key expiry"
+toggle moot.
+
+### The gotchas
+
+**Funnel is enabled per _port_, not per path.** Anything else ever mounted on
+443 becomes public too. Keep 443 exclusively Vaultwarden; if another app wants
+`tailscale serve`, give it a different port so a future you cannot accidentally
+publish Homepage.
+
+**A port scan of your home IP will not show this.** Funnel is an outbound
+tunnel and never touches your router. A clean scan does not mean Vaultwarden is
+private.
+
+**`fail2ban` would not help.** Behind Funnel, Vaultwarden sees the Tailscale
 proxy rather than the real client IP, so bans would hit the wrong address.
 Vaultwarden's own rate limiting is the control.
 
-A funnelled URL is also genuinely reachable from outside, which means a free
-external uptime monitor can poll it — a better dead-man switch than
-absence-of-ping, and the only active external prober available in Stage 1.
-Point it at `/alive`, not the login page.
+### One thing it buys you
+
+A funnelled URL is genuinely reachable from outside, so a free external uptime
+monitor can poll it — an active external prober, which is a better dead-man
+switch than absence-of-ping and the only one available in Stage 1. Point it at
+`/alive`, not the login page.

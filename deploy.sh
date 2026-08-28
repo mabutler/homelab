@@ -3,6 +3,7 @@
 #
 #   ./deploy.sh                 every app in apps/
 #   ./deploy.sh vaultwarden     just this one
+#   ./deploy.sh --no-start      link and reload, but do not start anything
 #   ./deploy.sh --remove NAME   unlink it (does not stop or delete anything)
 #   ./deploy.sh --list          what is deployed
 #
@@ -25,7 +26,7 @@ TMPFILES_SRC="$REPO_ROOT/system/tmpfiles"
 UNIT_GLOBS=(.container .network .volume .pod .kube .build .image)
 
 usage() {
-    sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'
 }
 
 list_apps() {
@@ -55,21 +56,52 @@ deploy_app() {
     mapfile -t units < <(app_units "$app")
     (( ${#units[@]} > 0 )) || die "$app has no Quadlet unit files"
 
-    # An app that ships a .env.example needs a real one before it can start.
-    # Catching that here beats a container that starts, finds an empty
-    # DOMAIN, and half-works in a way that is painful to unpick later.
+    # Secrets live in the repo, gitignored, next to the unit that consumes
+    # them, and are symlinked into /etc/homelab/apps/ — so every secret on this
+    # host is discoverable in one directory (one thing to back up, one thing to
+    # restore) while the file you actually edit sits with its app.
+    #
+    # A missing one stops the deploy with instructions rather than being
+    # invented. Same contract as host.conf: the repository ships an example,
+    # you make the real file, nothing guesses on your behalf. An auto-created
+    # file full of placeholders is a file you can forget to edit.
+    #
+    # Permissions and the symlink ARE handled here — that is mechanical work,
+    # not a decision.
     local example
     for example in "$dir"/*.env.example; do
         [[ -f "$example" ]] || continue
-        local env_path perms
-        env_path="$SECRETS_DIR/$(basename -- "${example%.example}")"
-        if [[ ! -f "$env_path" ]]; then
-            die "$app needs $env_path
-Copy $example there, fill it in, and chmod 0600."
+
+        local real link
+        real="${example%.example}"
+        link="$SECRETS_DIR/$(basename -- "$real")"
+
+        if [[ ! -f "$real" ]]; then
+            die "$app needs its environment file.
+
+    cp $example \\
+       $real
+    \${EDITOR:-vim} $real
+
+Then run this again. Permissions and the symlink into $SECRETS_DIR
+are handled for you."
         fi
-        perms="$(stat -c '%a %U' -- "$env_path")"
-        [[ "$perms" == "600 root" ]] \
-            || die "$env_path is $perms — must be 600 root. It holds credentials."
+
+        run chown root:root -- "$real"
+        run chmod 0600 -- "$real"
+
+        run mkdir -p -- "$SECRETS_DIR"
+        run chmod 0700 -- "$SECRETS_DIR"
+        if [[ -L "$link" && "$(readlink -f -- "$link")" == "$(readlink -f -- "$real")" ]]; then
+            dbg "already linked: $link"
+        elif [[ -e "$link" && ! -L "$link" ]]; then
+            die "$link exists and is not a symlink — move it aside; this script will not replace a real file"
+        else
+            log "link $link -> $real"
+            run ln -sfn -- "$real" "$link"
+            DEPLOY_CHANGED=1
+            APP_CHANGED=1
+        fi
     done
 
     local f target
@@ -85,6 +117,7 @@ Copy $example there, fill it in, and chmod 0600."
         log "link $(basename -- "$f")"
         run ln -sfn -- "$f" "$target"
         DEPLOY_CHANGED=1
+        APP_CHANGED=1
     done
 }
 
@@ -101,13 +134,14 @@ remove_app() {
 }
 
 main() {
-    local mode=deploy
+    local mode=deploy no_start=0
     local -a want=()
 
     while (( $# )); do
         case "$1" in
-            --remove) mode=remove ;;
-            --list)   mode=list ;;
+            --remove)   mode=remove ;;
+            --list)     mode=list ;;
+            --no-start) no_start=1 ;;
             -h|--help) usage; return 0 ;;
             -v|--verbose) VERBOSE=1 ;;
             -*) usage >&2; die "unknown argument: $1" ;;
@@ -162,30 +196,72 @@ main() {
     fi
 
     local app
+    local -a changed_apps=()
     for app in "${want[@]}"; do
+        APP_CHANGED=0
         if [[ "$mode" == remove ]]; then
             remove_app "$app"
         else
             deploy_app "$app"
+            (( APP_CHANGED )) && changed_apps+=("$app")
         fi
     done
 
+    # Quadlet turns .container files into services at daemon-reload, so nothing
+    # exists to start until this runs.
     if (( DEPLOY_CHANGED )); then
         unit_reload
     else
         dbg "nothing changed"
     fi
 
-    if [[ "$mode" == deploy && -z "$DRY_RUN" ]]; then
-        printf '\n' >&2
-        for app in "${want[@]}"; do
-            if systemctl is-active --quiet "$app.service" 2>/dev/null; then
-                ok "$app is running"
-            else
-                log "$app is deployed but not started:  sudo systemctl start $app"
-            fi
-        done
+    [[ "$mode" == deploy ]] || return 0
+    if (( no_start )); then
+        log "--no-start: units are linked but nothing was started"
+        return 0
     fi
+
+    # Start what is not running; restart what is running and whose unit moved.
+    #
+    # Boot-time startup is NOT handled here: Quadlet honours the [Install]
+    # section inside the .container file, so `systemctl enable` is neither
+    # needed nor meaningful for a generated unit.
+    printf '\n' >&2
+    local failed=0
+    for app in "${want[@]}"; do
+        local is_active=0 was_changed=0 a
+        systemctl is-active --quiet "$app.service" 2>/dev/null && is_active=1
+        for a in ${changed_apps[@]+"${changed_apps[@]}"}; do
+            [[ "$a" == "$app" ]] && was_changed=1
+        done
+
+        if (( is_active && ! was_changed )); then
+            ok "$app already running, unit unchanged"
+            continue
+        fi
+
+        if (( is_active )); then
+            log "restarting $app (its unit changed)"
+            run systemctl restart "$app.service"
+        else
+            log "starting $app"
+            run systemctl start "$app.service"
+        fi
+
+        [[ -n "$DRY_RUN" ]] && continue
+
+        # Give a container that is pulling an image a moment before judging it.
+        sleep 2
+        if systemctl is-active --quiet "$app.service"; then
+            ok "$app is running"
+        else
+            err "$app did not start"
+            systemctl status --no-pager --lines=15 "$app.service" >&2 || true
+            failed=$(( failed + 1 ))
+        fi
+    done
+
+    (( failed == 0 )) || die "$failed app(s) failed to start"
 }
 
 main "$@"

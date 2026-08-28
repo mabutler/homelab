@@ -397,12 +397,18 @@ sudo ./deploy.sh --list         # what is linked, and to what
 sudo ./deploy.sh --remove NAME  # unlink; does not stop or delete anything
 ```
 
-Deploying does not start anything. `systemctl start <app>` does.
+`deploy.sh` starts what it deploys: it starts anything not running, and
+restarts anything whose unit file changed. Boot-time startup needs no
+`systemctl enable` — Quadlet honours the `[Install]` section inside each
+`.container`. Use `--no-start` to link and reload without touching services.
 
-**Secrets live in `/etc/homelab/apps/<app>.env`, mode 0600** — outside the
-repository and outside the app's data directory, so restoring a data backup
-cannot silently restore a stale `DOMAIN` or admin token. `deploy.sh` refuses
-to link an app whose env file is missing or wrongly permissioned.
+**Secrets** live in `apps/<name>/<name>.env` — in the repo, gitignored, next to
+the unit that consumes them — and are symlinked into `/etc/homelab/apps/`, so
+every secret on this host is discoverable in one directory.
+
+Same contract as `host.conf`: the repo ships `<name>.env.example`, you copy it
+and fill it in. `deploy.sh` stops with the exact commands if one is missing,
+and handles ownership, 0600 and the symlink itself once it exists.
 
 Those files are not in git and not recoverable from the vault they configure.
 **Keep copies in your password manager.**
@@ -410,6 +416,31 @@ Those files are not in git and not recoverable from the vault they configure.
 | App | State | Notes |
 |---|---|---|
 | Vaultwarden | `/opt/appdata/vaultwarden` | [apps/vaultwarden/README.md](apps/vaultwarden/README.md) |
+
+### The one public service
+
+Vaultwarden is the only thing on this host reachable from outside the tailnet,
+via `tools/enable-funnel.sh` → Tailscale Funnel on 443. Funnel is enabled per
+**port**, not per path, so keep 443 exclusively Vaultwarden: anything else ever
+mounted there becomes public too. Give other apps a different `tailscale serve`
+port.
+
+`enable-funnel.sh` refuses to publish if Vaultwarden is down, `SIGNUPS_ALLOWED`
+is true, `ADMIN_TOKEN` is set, `DOMAIN` does not match this node's MagicDNS
+name, or `tailscale serve` is not already forwarding to `127.0.0.1:8222`.
+
+Those gate the **initial publish only**. Nothing stops you toggling any of them
+afterwards — the script is not in that loop — so a refusal costs an edit and a
+restart, not a workflow.
+
+Adding a user means opening registration, and with Funnel live that window is
+open to the internet rather than the tailnet. Minutes, not days. The procedure,
+and the safer variant for someone who is already on the tailnet, are in
+[apps/vaultwarden/README.md](apps/vaultwarden/README.md#adding-someone-later).
+
+A port scan of the home IP will not show any of this — Funnel is an outbound
+tunnel and never touches the router. A clean scan is not evidence that
+Vaultwarden is private.
 
 ---
 
@@ -481,9 +512,10 @@ Recorded because each one cost real time and none of them are obvious.
   not a backup — it protects against drive failure, not against deletion,
   corruption, fire or theft.
 - **Applications.** Phase 3, starting with Vaultwarden.
-- **Tailscale ACLs and `tag:server`.** Deferred to the Vaultwarden Funnel work.
-  The tailnet currently runs the default allow-all, which is fine while
-  nothing is public.
+- **Tailscale ACLs and `tag:server`.** Policy written and committed at
+  `apps/vaultwarden/tailnet-policy.hujson`, applied by `tools/enable-funnel.sh`
+  — but only once you paste the policy into the admin console. Until then the
+  tailnet runs the default allow-all, which is fine while nothing is public.
 - **Read-only proxy for `podman.socket`.** Arrives with Homepage.
 - **Camera footage and SnapRAID.** Currently *inside* parity protection,
   reversing the original plan. Revisit when cameras are actually bought.
