@@ -1,0 +1,15 @@
+[Unit]
+Description=SnapRAID scrub
+Documentation=man:snapraid(1)
+RequiresMountsFor=/mnt/parity1 /mnt/disk1 /mnt/disk2 /mnt/disk3
+
+[Service]
+Type=oneshot
+Nice=15
+IOSchedulingClass=idle
+# -p 12 -o 10: verify 12% of the array that has not been checked in 10 days.
+# Weekly, that walks the whole array roughly every two months, which catches
+# bit rot long before a drive failure makes it matter — and spreads the read
+# load thin enough that seven-year-old drives are not hammered.
+ExecStart=/usr/bin/snapraid --conf /etc/snapraid.conf scrub -p 12 -o 10
+TimeoutStartSec=infinity

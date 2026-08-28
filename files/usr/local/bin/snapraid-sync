@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+# snapraid-sync — run `snapraid sync`, but refuse in the two situations where
+# syncing destroys your ability to recover.
+#
+# 1. A data drive is not mounted.
+#
+#    SnapRAID has no idea a drive is missing. It walks the mountpoint, finds an
+#    empty directory, concludes every file on that drive was deleted, and
+#    updates parity to match. Parity then describes an array without those
+#    files, and they are unrecoverable. Running as root, it is not even stopped
+#    by the chmod 0000 lockdown on the mountpoint — root ignores it.
+#
+#    This is the single most destructive thing that can happen to this array
+#    without anyone touching a disk, and it happens on a timer, at night.
+#
+# 2. An implausible number of files have disappeared.
+#
+#    Same failure, subtler causes: a filesystem that mounted read-only, a
+#    half-finished restore, a bad `rm`. SnapRAID upstream ships no threshold —
+#    that check is what every wrapper around it exists to add.
+#
+# Override for a genuine mass deletion:  SNAPRAID_FORCE=1 snapraid-sync
+
+set -euo pipefail
+
+# Overridable only so the refusals below can be exercised against a fixture.
+CONF="${SNAPRAID_CONF:-/etc/snapraid.conf}"
+DELETE_THRESHOLD="${SNAPRAID_DELETE_THRESHOLD:-500}"
+
+log()  { printf '%s\n' "$*"; }
+die()  { printf 'snapraid-sync: %s\n' "$*" >&2; exit 1; }
+
+[[ -r "$CONF" ]] || die "no $CONF"
+
+# --- every disk named in the config must be a real mount point --------------
+mapfile -t disks < <(awk '/^data /  { print $3 }' "$CONF")
+mapfile -t parity < <(awk '/^parity /{ print $2 }' "$CONF")
+
+for d in "${disks[@]}"; do
+    mountpoint -q -- "${d%/}" \
+        || die "${d%/} is not a mount point — refusing to sync. Syncing now would record every file on that drive as deleted."
+done
+for p in "${parity[@]}"; do
+    pdir="$(dirname -- "$p")"
+    mountpoint -q -- "$pdir" \
+        || die "$pdir is not a mount point — refusing to sync without parity storage"
+done
+
+# --- how much is about to change -------------------------------------------
+# `snapraid diff` exits 0 when nothing differs and 2 when something does.
+# Anything else is a real error.
+set +e
+diff_out="$(snapraid --conf "$CONF" diff 2>&1)"
+diff_rc=$?
+set -e
+
+case "$diff_rc" in
+    0) log "nothing changed since the last sync"; exit 0 ;;
+    2) : ;;
+    *) printf '%s\n' "$diff_out" >&2; die "snapraid diff failed (exit $diff_rc)" ;;
+esac
+
+removed="$(printf '%s\n' "$diff_out" | awk '/ removed$/ { print $1; exit }')"
+removed="${removed:-0}"
+
+log "$diff_out"
+
+if [[ -z "${SNAPRAID_FORCE:-}" ]] && (( removed > DELETE_THRESHOLD )); then
+    die "$removed files removed, threshold is $DELETE_THRESHOLD — refusing.
+If this is a genuine deletion, re-run with SNAPRAID_FORCE=1.
+If it is not, find out what happened BEFORE syncing: parity still
+describes the array as it was, and that is what makes recovery possible."
+fi
+
+log "syncing ($removed removed, threshold $DELETE_THRESHOLD)"
+exec snapraid --conf "$CONF" sync

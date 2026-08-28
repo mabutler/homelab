@@ -238,11 +238,26 @@ fi
 
 section "SnapRAID — bootstrap/50-snapraid.sh"
 if have snapraid && [[ -f /etc/snapraid.conf ]]; then
-    c_sr_status(){ snapraid status; }
+    c_sr_status(){ snapraid --conf /etc/snapraid.conf status; }
     c_sr_sync()  { systemctl is-enabled --quiet snapraid-sync.timer; }
     c_sr_scrub() { systemctl is-enabled --quiet snapraid-scrub.timer; }
+    c_sr_active(){ systemctl is-active --quiet snapraid-sync.timer; }
+    c_sr_wrap()  { [[ -x /usr/local/bin/snapraid-sync ]]; }
+    # The timer must call the wrapper, never snapraid directly. A unit edited to
+    # shortcut it would run sync with a drive unmounted, and there is no undo.
+    c_sr_via_wrapper() {
+        grep_output '^ExecStart=/usr/local/bin/snapraid-sync$' \
+            systemctl show -p ExecStart --value snapraid-sync.service \
+            || grep -q '/usr/local/bin/snapraid-sync' /etc/systemd/system/snapraid-sync.service
+    }
+    c_parity()   { local p; p="$(awk '/^parity /{print $2; exit}' /etc/snapraid.conf)"
+                   [[ -n "$p" ]] && mountpoint -q -- "$(dirname -- "$p")"; }
     check "snapraid status is clean"                c_sr_status
+    check "the sync wrapper is installed"           c_sr_wrap
+    check "snapraid-sync.service calls the wrapper" c_sr_via_wrapper
+    check "parity lives on a real mount point"      c_parity
     check "snapraid-sync.timer is enabled"          c_sr_sync
+    check "snapraid-sync.timer is active"           c_sr_active
     check "snapraid-scrub.timer is enabled"         c_sr_scrub
 else
     pending "not run yet — snapraid config and timers"

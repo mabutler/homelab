@@ -1,0 +1,16 @@
+[Unit]
+Description=SnapRAID sync
+Documentation=man:snapraid(1)
+# systemd will not even start the unit unless these are mounted. The wrapper
+# checks again anyway — belt and braces, because the cost of being wrong here
+# is the array.
+RequiresMountsFor=/mnt/parity1 /mnt/disk1 /mnt/disk2 /mnt/disk3
+
+[Service]
+Type=oneshot
+# Parity work is heavy and entirely uninteresting compared to anything a person
+# is waiting on. Let it have the machine only when nothing else wants it.
+Nice=15
+IOSchedulingClass=idle
+ExecStart=/usr/local/bin/snapraid-sync
+TimeoutStartSec=infinity
