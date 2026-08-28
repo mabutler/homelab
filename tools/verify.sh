@@ -168,10 +168,15 @@ section "Snapshots — bootstrap/20-snapshots.sh"
 if have snapper; then
     c_snapper_root(){ grep_output '(^|[[:space:]])root([[:space:]]|$)' snapper list-configs; }
     c_snap_pac()    { pacman -Q snap-pac; }
-    c_grub_btrfs()  { systemctl is-enabled --quiet grub-btrfsd.service; }
+    # is-active, not is-enabled: grub-btrfsd exits 1 on startup when
+    # inotify-tools is absent, and an enabled-but-dead daemon regenerates
+    # nothing while looking perfectly configured.
+    c_grub_btrfs()  { systemctl is-active --quiet grub-btrfsd.service; }
+    c_inotify()     { command -v inotifywait >/dev/null; }
     check "snapper has a config for root"           c_snapper_root
     check "snap-pac is installed"                   c_snap_pac
-    check "grub-btrfsd is enabled"                  c_grub_btrfs
+    check "inotify-tools is installed"              c_inotify
+    check "grub-btrfsd is running"                  c_grub_btrfs
 else
     pending "not run yet — snapper, snap-pac, grub-btrfs"
 fi

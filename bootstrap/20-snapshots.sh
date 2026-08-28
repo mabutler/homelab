@@ -18,7 +18,11 @@ load_host_conf
 
 SNAP_DIR=/.snapshots
 
-pkg_install snapper snap-pac grub-btrfs
+# inotify-tools is an *optional* dependency of grub-btrfs, so pacman will not
+# pull it in — but grub-btrfsd watches the snapshot directory with inotifywait
+# and exits 1 immediately without it. Optional to the package, mandatory to the
+# daemon we are about to enable.
+pkg_install snapper snap-pac grub-btrfs inotify-tools
 
 # ---------------------------------------------------------------------------
 # The config, and the subvolume collision
@@ -104,6 +108,17 @@ unit_enable --now snapper-cleanup.timer
 # submenu when it changes, so a snapshot taken during a pacman transaction is
 # bootable without anyone remembering to run grub-mkconfig.
 unit_enable --now grub-btrfsd.service
+
+# `systemctl enable --now` returns success for a Type=simple unit as soon as
+# the exec succeeds, so a daemon that dies a second later still looks like it
+# started. Give it a moment and check that it is actually alive.
+if [[ -z "$DRY_RUN" ]]; then
+    sleep 2
+    if ! systemctl is-active --quiet grub-btrfsd.service; then
+        journalctl -u grub-btrfsd.service -n 20 --no-pager >&2 || true
+        die "grub-btrfsd is enabled but not running — snapshots would never reach the GRUB menu"
+    fi
+fi
 
 log "regenerating grub.cfg so the snapshot submenu exists now"
 run grub-mkconfig -o /boot/grub/grub.cfg 2>/dev/null
