@@ -1,0 +1,7 @@
+[Unit]
+Description=Hourly heartbeat to the dead-man check
+OnFailure=ntfy-alert@%n.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/homelab-heartbeat

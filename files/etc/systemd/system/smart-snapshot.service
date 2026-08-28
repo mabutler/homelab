@@ -1,0 +1,9 @@
+[Unit]
+Description=Weekly SMART attribute snapshot and delta report
+OnFailure=ntfy-alert@%n.service
+
+[Service]
+Type=oneshot
+Nice=15
+ExecStart=/usr/local/bin/smart-snapshot
+ExecStartPost=/usr/local/bin/hc-ping HC_SMART_URL

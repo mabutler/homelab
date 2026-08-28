@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# homelab-heartbeat — say "still here" once an hour.
+#
+# This is the only alert that fires by ABSENCE. Everything else needs the
+# machine to be alive enough to notice its own problem and send a message;
+# a dead host, a wedged kernel or a cut power line cannot do that. The hosted
+# check notices the silence instead.
+set -euo pipefail
+exec /usr/local/bin/hc-ping HC_HEARTBEAT_URL

@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# hc-ping <ENV_VAR_NAME> [fail]
+#
+# Ping a Healthchecks.io check by the name of the host.conf variable holding
+# its URL — explicit rather than derived, so grepping for the variable name
+# finds every place it is used.
+#
+# A missing or empty URL is not an error: alerting values are optional in
+# host.conf, and a check you have not created yet should not fail the unit
+# that is trying to report success to it.
+
+set -euo pipefail
+
+ENV_FILE=/etc/homelab/alerting.env
+var="${1:?usage: hc-ping <ENV_VAR_NAME> [fail]}"
+state="${2:-}"
+
+[[ -r "$ENV_FILE" ]] || exit 0
+# shellcheck source=/dev/null
+source "$ENV_FILE"
+
+url="${!var:-}"
+[[ -n "$url" ]] || exit 0
+
+[[ "$state" == "fail" ]] && url="${url%/}/fail"
+
+curl --silent --show-error --fail --max-time 15 --retry 3 -o /dev/null "$url" || {
+    # Never let a failed ping fail the job it was reporting on. The dead-man
+    # switch will notice the absence, which is exactly what it is for.
+    printf 'hc-ping: could not reach the check for %s\n' "$var" >&2
+    exit 0
+}

@@ -1,0 +1,129 @@
+#!/usr/bin/env bash
+# smart-snapshot — capture every drive's SMART attributes, and report what moved.
+#
+# The interesting SMART attributes are cumulative lifetime counters. A single
+# reading says almost nothing: 137,840 CRC errors could be a link failing right
+# now or a bad cable replaced four years ago, and the number alone cannot tell
+# you which. The rate of change can. That is the whole reason this exists.
+#
+# Snapshots are kept forever. They are a few kilobytes each, and their entire
+# value is in having a long baseline — deleting old ones throws away precisely
+# the thing that makes the recent ones meaningful.
+
+set -euo pipefail
+
+# Both overridable only so the delta logic can be exercised against a fixture;
+# nothing in this repository sets either.
+HIST="${SMART_HISTORY_DIR:-/var/lib/smart-history}"
+BYID="${SMART_BYID_DIR:-/dev/disk/by-id}"
+STAMP="$(date -u +%Y-%m-%dT%H%M%SZ)"
+
+# Counters worth waking someone for. All are "should never increase" — the
+# ones that describe damage rather than activity.
+declare -A WATCHED=(
+    [5]=Reallocated_Sector_Ct
+    [10]=Spin_Retry_Count
+    [187]=Reported_Uncorrect
+    [188]=Command_Timeout
+    [196]=Reallocated_Event_Count
+    [197]=Current_Pending_Sector
+    [198]=Offline_Uncorrectable
+    [199]=UDMA_CRC_Error_Count
+    [200]=Multi_Zone_Error_Rate
+)
+
+command -v smartctl >/dev/null || { echo "smartctl not found" >&2; exit 1; }
+
+# raw_value <file> <attribute-id>
+# Field 10 onward: attribute 188 packs three counters into its raw value, so
+# taking only the last field would silently read the wrong number.
+raw_value() {
+    awk -v id="$2" '$1 == id {
+        raw = ""
+        for (i = 10; i <= NF; i++) raw = raw (i > 10 ? " " : "") $i
+        print raw
+        exit
+    }' "$1"
+}
+
+# --- capture ---------------------------------------------------------------
+mkdir -p "$HIST/$STAMP"
+found=0
+
+for link in "$BYID"/ata-* "$BYID"/nvme-*; do
+    [[ -e "$link" ]] || continue
+    [[ "$link" == *-part[0-9]* ]] && continue
+
+    dev="$(readlink -f -- "$link")"
+    [[ -b "$dev" ]] || continue
+
+    info="$(smartctl -i "$dev" 2>/dev/null || true)"
+    serial="$(printf '%s\n' "$info" | awk -F: '/Serial Number/ { gsub(/[[:space:]]/, "", $2); print $2; exit }')"
+    [[ -n "$serial" ]] || continue
+
+    # A multi-slot USB card reader presents several devices sharing one serial;
+    # first writer wins and the rest are skipped rather than overwriting it.
+    [[ -e "$HIST/$STAMP/$serial.txt" ]] && continue
+
+    {
+        printf '# %s  %s\n' "$STAMP" "$dev"
+        printf '%s\n' "$info" | grep -E 'Model|Serial|Capacity|Rotation'
+        printf '\n'
+        smartctl -A "$dev" 2>/dev/null || true
+    } > "$HIST/$STAMP/$serial.txt"
+    found=$(( found + 1 ))
+done
+
+(( found > 0 )) || { echo "no drives readable by smartctl" >&2; exit 1; }
+
+# --- compare ---------------------------------------------------------------
+mapfile -t snaps < <(find "$HIST" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort)
+if (( ${#snaps[@]} < 2 )); then
+    printf 'first snapshot (%d drives) — nothing to compare against yet\n' "$found"
+    exit 0
+fi
+
+prev="${snaps[-2]}"
+oldest="${snaps[0]}"
+report=""
+
+for f in "$HIST/$STAMP"/*.txt; do
+    serial="$(basename -- "$f" .txt)"
+    prev_f="$HIST/$prev/$serial.txt"
+    old_f="$HIST/$oldest/$serial.txt"
+    [[ -f "$prev_f" ]] || { report+="$serial: new drive, no history"$'\n'; continue; }
+
+    for id in "${!WATCHED[@]}"; do
+        now="$(raw_value "$f" "$id")"
+        was="$(raw_value "$prev_f" "$id")"
+        [[ -n "$now" && -n "$was" ]] || continue
+        [[ "$now" == "$was" ]] && continue
+
+        line="$serial  $id ${WATCHED[$id]}: $was -> $now"
+        # A plain integer gets a delta; attribute 188's triplet does not.
+        if [[ "$now" =~ ^[0-9]+$ && "$was" =~ ^[0-9]+$ ]]; then
+            line+="  (+$(( now - was )))"
+        fi
+        if [[ -f "$old_f" ]]; then
+            since="$(raw_value "$old_f" "$id")"
+            [[ -n "$since" ]] && line+="  [was $since on $oldest]"
+        fi
+        report+="$line"$'\n'
+    done
+done
+
+if [[ -z "$report" ]]; then
+    printf 'no watched counter moved on %d drives since %s\n' "$found" "$prev"
+    exit 0
+fi
+
+printf 'SMART counters moved since %s:\n%s' "$prev" "$report"
+
+if [[ -x /usr/local/bin/ntfy-alert ]]; then
+    /usr/local/bin/ntfy-alert \
+        "$(hostnamectl --static 2>/dev/null || uname -n): SMART counters moved" \
+        "$report
+Compared against $prev. Full history in $HIST." \
+        high \
+        "floppy_disk"
+fi

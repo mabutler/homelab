@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# smartd-ntfy — invoked by smartd via `-M exec`.
+#
+# smartd hands us the drive and the reason in the environment. This runs on
+# attribute movement, on a failing self-test, and on temperature limits — the
+# events where the useful response is to look at the trend, not to panic.
+set -euo pipefail
+
+dev="${SMARTD_DEVICESTRING:-unknown device}"
+msg="${SMARTD_MESSAGE:-no message}"
+host="$(hostnamectl --static 2>/dev/null || uname -n)"
+
+exec /usr/local/bin/ntfy-alert \
+    "$host: SMART — $dev" \
+    "$msg
+
+$( [[ -n "${SMARTD_FULLMESSAGE:-}" ]] && printf '%s\n' "$SMARTD_FULLMESSAGE" )" \
+    high \
+    "floppy_disk"

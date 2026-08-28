@@ -1,0 +1,8 @@
+[Unit]
+Description=Push an alert about %i
+# No OnFailure here. If the alerter fails there is nothing left to tell, and a
+# unit that alerts about its own alerting failure is a loop.
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/ntfy-alert --unit %i

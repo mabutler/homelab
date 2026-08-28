@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# ntfy-alert — push a notification, and nothing else.
+#
+#   ntfy-alert "title" "message" [priority] [tags]
+#   ntfy-alert --unit <unit-name>      (used by OnFailure=)
+#
+# The topic is read from /etc/homelab/alerting.env, mode 0600, because on
+# public ntfy.sh the topic IS the credential: anyone who knows it can read
+# every alert this machine sends and publish forgeries to it. It does not
+# belong in a world-readable script, or in the repository.
+
+set -euo pipefail
+
+ENV_FILE=/etc/homelab/alerting.env
+[[ -r "$ENV_FILE" ]] || { printf 'ntfy-alert: cannot read %s\n' "$ENV_FILE" >&2; exit 1; }
+# shellcheck source=/dev/null
+source "$ENV_FILE"
+
+: "${NTFY_SERVER:?NTFY_SERVER unset}"
+: "${NTFY_TOPIC:?NTFY_TOPIC unset}"
+
+host="$(hostnamectl --static 2>/dev/null || uname -n)"
+
+if [[ "${1:-}" == "--unit" ]]; then
+    unit="${2:?--unit needs a unit name}"
+    title="$host: $unit failed"
+    priority=high
+    tags="rotating_light"
+    # The last few journal lines are almost always the whole story, and having
+    # them on your phone means not needing to be at a terminal to know whether
+    # this can wait until morning.
+    body="$(systemctl status --no-pager --lines=0 -- "$unit" 2>&1 | head -5)
+$(journalctl -u "$unit" -n 15 --no-pager -o cat 2>&1 || true)"
+else
+    title="${1:?usage: ntfy-alert <title> <message> [priority] [tags]}"
+    body="${2:-}"
+    priority="${3:-default}"
+    tags="${4:-computer}"
+fi
+
+# --max-time so a hung ntfy cannot wedge the unit that called us. --retry
+# because a transient network blip should not lose the only warning you get.
+curl --silent --show-error --fail \
+     --max-time 20 --retry 3 --retry-delay 5 \
+     -H "Title: ${title}" \
+     -H "Priority: ${priority}" \
+     -H "Tags: ${tags}" \
+     -d "${body:-(no detail)}" \
+     "${NTFY_SERVER%/}/${NTFY_TOPIC}" >/dev/null

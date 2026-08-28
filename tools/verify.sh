@@ -266,13 +266,25 @@ fi
 section "Alerting — bootstrap/60-alerting.sh"
 if have smartd || [[ -x /usr/local/bin/ntfy-alert ]]; then
     c_smartd()     { systemctl is-active --quiet smartd.service; }
-    c_smart_state(){ grep -qs '^\s*-s\s' /etc/smartd.conf && grep -qs 'state' /etc/smartd.conf; }
+    # Without persistent state smartd re-baselines on every restart, so a
+    # counter that moved across a reboot is never reported as having moved.
+    c_smart_state(){ grep_output 'savestates' systemctl show -p ExecStart --value smartd.service; }
+    c_smartd_byid(){ grep -q '^/dev/disk/by-id/' /etc/smartd.conf; }
     c_ntfy()       { [[ -x /usr/local/bin/ntfy-alert ]]; }
-    c_heartbeat()  { systemctl is-enabled --quiet heartbeat.timer; }
+    c_env_perms()  { [[ "$(stat -c '%a %U' /etc/homelab/alerting.env)" == "600 root" ]]; }
+    c_heartbeat()  { systemctl is-active --quiet homelab-heartbeat.timer; }
+    c_smartsnap()  { systemctl is-active --quiet smart-snapshot.timer; }
+    c_history()    { compgen -G '/var/lib/smart-history/*/*.txt' >/dev/null; }
+    c_onfailure()  { grep_output 'ntfy-alert@' systemctl show -p OnFailure --value snapraid-sync.service; }
     check "smartd is running"                       c_smartd
     check "smartd keeps persistent state files"     c_smart_state
+    check "smartd.conf addresses drives by id"      c_smartd_byid
     check "the ntfy helper is installed"            c_ntfy
-    check "the heartbeat timer is enabled"          c_heartbeat
+    check "alerting.env is 0600 root"               c_env_perms
+    check "snapraid-sync alerts on failure"         c_onfailure
+    check "the heartbeat timer is active"           c_heartbeat
+    check "the SMART snapshot timer is active"      c_smartsnap
+    check "a SMART baseline has been captured"      c_history
 else
     pending "not run yet — smartd, ntfy, heartbeat"
 fi

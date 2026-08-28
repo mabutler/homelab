@@ -1,0 +1,11 @@
+[Unit]
+Description=Hourly heartbeat
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1h
+# Deliberately NOT Persistent: a heartbeat that fires late to "catch up" after
+# downtime would report health for a period the machine was not healthy.
+
+[Install]
+WantedBy=timers.target
