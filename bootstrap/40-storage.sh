@@ -95,6 +95,32 @@ lock_branch "$POOL_MNT"
 #
 # nofail plus a short device timeout is what makes a dead drive a degraded
 # pool rather than an emergency shell at boot with no network and no ssh.
+#
+# Installed before the fstab is written, because the fstype below depends on
+# which mount helper this package provides.
+#
+# mergerfs is AUR-only — see bootstrap/15-aur.sh for why that is unavoidable
+# and what it costs. Built from source against this system's fuse3, which means
+# a fuse3 soname bump needs a rebuild; `paru -Syu` handles that.
+aur_install mergerfs
+
+# The fstype is "mergerfs", not "fuse.mergerfs".
+#
+# util-linux resolves a "fuse.X" fstype through /sbin/mount.fuse, which fuse2
+# shipped and fuse3 does not. With no helper, mount hands mergerfs's options
+# straight to the kernel's fuse driver, which rejects them:
+#
+#   mount: /mnt/pool: fsconfig() failed: fuse: Unknown parameter 'cache.files'
+#
+# Naming the fstype "mergerfs" reaches mount.mergerfs directly. findmnt still
+# reports the mounted filesystem as fuse.mergerfs, because mergerfs sets that
+# subtype itself.
+if [[ -z "$DRY_RUN" ]]; then
+    command -v mount.mergerfs >/dev/null 2>&1 \
+        || [[ -x /sbin/mount.mergerfs || -x /usr/bin/mount.mergerfs ]] \
+        || die "mergerfs is installed but provides no mount.mergerfs helper — mount would fall through to the kernel fuse driver and reject the pool options"
+fi
+
 POOL_OPTS="defaults,nofail,allow_other,cache.files=partial,dropcacheonclose=true"
 POOL_OPTS+=",category.create=mfs,minfreespace=20G,fsname=mergerfs"
 
@@ -111,7 +137,7 @@ block="$(
     for m in "${DATA_MNTS[@]}"; do
         requires+=",x-systemd.requires-mounts-for=$m"
     done
-    printf '%-25s %-14s fuse.mergerfs  %s%s  0 0\n' \
+    printf '%-25s %-14s mergerfs  %s%s  0 0\n' \
         "$branches" "$POOL_MNT" "$POOL_OPTS" "$requires"
     printf '%s\n' "$END_MARK"
 )"
@@ -159,11 +185,6 @@ fi
 # ---------------------------------------------------------------------------
 # Mount
 # ---------------------------------------------------------------------------
-# mergerfs is AUR-only — see bootstrap/15-aur.sh for why that is unavoidable
-# and what it costs. Built from source against this system's fuse3, which means
-# a fuse3 soname bump needs a rebuild; `paru -Syu` handles that.
-aur_install mergerfs
-
 if [[ -z "$DRY_RUN" ]]; then
     log "mounting everything in fstab that is not already mounted"
     mount -a || warn "mount -a reported a problem — the checks below will say which"
