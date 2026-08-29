@@ -1,0 +1,30 @@
+[Unit]
+Description=Memos — quick notes
+Documentation=https://www.usememos.com/docs
+
+RequiresMountsFor=/opt/appdata
+After=network-online.target
+Wants=network-online.target
+OnFailure=ntfy-alert@%n.service
+
+[Container]
+ContainerName=memos
+Image=docker.io/neosmemo/memos:stable
+AutoUpdate=registry
+
+PublishPort=127.0.0.1:5230:5230
+
+Volume=/opt/appdata/memos:/var/opt/memos:Z
+
+# --init, per upstream: memos does not reap its own children, and without a
+# PID 1 that does, zombies accumulate over a long uptime.
+RunInit=true
+
+NoNewPrivileges=true
+
+[Service]
+Restart=always
+TimeoutStartSec=300
+
+[Install]
+WantedBy=multi-user.target default.target

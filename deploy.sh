@@ -421,14 +421,21 @@ main() {
 
     PUBLISH_CHANGED=0
     for app in "${want[@]}"; do
-        # Publish only what is actually serving. For a multi-container app the
-        # serve target belongs to one of them; if any service is down the app
-        # is not ready to be reachable.
-        local all_up=1 svc
+        # Publish only what is actually serving: publishing something that is
+        # not running means debugging a 502 from a phone on cellular.
+        #
+        # Say so at normal verbosity. This was a dbg line, which meant a single
+        # stopped sidecar silently skipped publishing and the app was simply
+        # unreachable with nothing in the output explaining why.
+        local -a down=()
+        local svc
         while read -r svc; do
-            systemctl is-active --quiet "$svc.service" 2>/dev/null || all_up=0
+            systemctl is-active --quiet "$svc.service" 2>/dev/null || down+=("$svc")
         done < <(app_services "$app")
-        (( all_up )) || { dbg "$app not fully up, not publishing"; continue; }
+        if (( ${#down[@]} )); then
+            warn "$app not published — these are not running: ${down[*]}"
+            continue
+        fi
         publish_app "$app" "$APPS_DIR/$app"
     done
     (( PUBLISH_CHANGED )) || dbg "publishing already converged"

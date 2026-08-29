@@ -86,6 +86,23 @@ All gitignored, all unrecoverable from the repository. The repo restores the
 which is a credential — anyone who has it can read every alert and publish
 convincing fakes.
 
+### The small SQLite apps
+
+| App | Path | Capture |
+|---|---|---|
+| Mealie | `/opt/appdata/mealie` | SQLite `.backup` on `mealie.db`, then the whole directory (recipe images live here too) |
+| Vikunja | `/opt/appdata/vikunja` | SQLite `.backup` on `db/vikunja.db`, **plus** `files/` — a database referencing attachments that were not restored is worse than neither |
+| Memos | `/opt/appdata/memos` | SQLite `.backup`, then the whole directory |
+
+Frequency: daily. Small enough that the cost is noise.
+
+Same rule as Vaultwarden: **never copy a live SQLite file.** Every one of these
+needs `.backup` in a pre-hook.
+
+`vikunja.env` holds `VIKUNJA_SERVICE_SECRET`, which signs session tokens.
+Without it nobody can log in until it is replaced and everyone signs in again —
+so it belongs in the host-identity set above, and in Vaultwarden.
+
 ---
 
 ## Tier 2 — painful but recreatable

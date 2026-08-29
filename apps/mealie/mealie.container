@@ -1,0 +1,32 @@
+[Unit]
+Description=Mealie — recipe manager and meal planner
+Documentation=https://docs.mealie.io
+
+RequiresMountsFor=/opt/appdata
+After=network-online.target
+Wants=network-online.target
+OnFailure=ntfy-alert@%n.service
+
+[Container]
+ContainerName=mealie
+# Pinned to a minor line rather than :latest. Mealie has shipped schema
+# migrations in point releases; a database that migrated forward overnight and
+# then met an older image is not a situation worth being in unattended.
+Image=ghcr.io/mealie-recipes/mealie:v3.24.0
+AutoUpdate=registry
+
+PublishPort=127.0.0.1:9925:9000
+
+# SQLite plus uploaded recipe images. Small, on ext4 with the other app state.
+Volume=/opt/appdata/mealie:/app/data:Z
+
+EnvironmentFile=/etc/homelab/apps/mealie.env
+
+NoNewPrivileges=true
+
+[Service]
+Restart=always
+TimeoutStartSec=300
+
+[Install]
+WantedBy=multi-user.target default.target

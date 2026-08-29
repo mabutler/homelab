@@ -1,0 +1,33 @@
+[Unit]
+Description=Vikunja — tasks and lists
+Documentation=https://vikunja.io/docs
+
+RequiresMountsFor=/opt/appdata
+After=network-online.target
+Wants=network-online.target
+OnFailure=ntfy-alert@%n.service
+
+[Container]
+ContainerName=vikunja
+# The single unified image — since 0.24 the frontend and API are one container
+# rather than the old two-container split. Do not follow older guides.
+Image=docker.io/vikunja/vikunja:latest
+AutoUpdate=registry
+
+PublishPort=127.0.0.1:3456:3456
+
+# Two separate paths, deliberately kept apart: the SQLite database and the
+# file attachments. It makes the backup rule obvious — both, together.
+Volume=/opt/appdata/vikunja/db:/db:Z
+Volume=/opt/appdata/vikunja/files:/app/vikunja/files:Z
+
+EnvironmentFile=/etc/homelab/apps/vikunja.env
+
+NoNewPrivileges=true
+
+[Service]
+Restart=always
+TimeoutStartSec=300
+
+[Install]
+WantedBy=multi-user.target default.target

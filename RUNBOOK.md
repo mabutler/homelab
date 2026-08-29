@@ -4,8 +4,9 @@ Operating notes for the host this repository provisions. Written for whoever
 is reading it at 11pm with something broken, which may well be you having
 forgotten all of it.
 
-Current as of Phase 3: `bootstrap/` complete, Vaultwarden live and public via
-Funnel, Immich next. See [Not done yet](#not-done-yet).
+Current as of Phase 3: `bootstrap/` complete; Vaultwarden live and public via
+Funnel; Immich, Mealie, Vikunja and Memos on the tailnet. See
+[Not done yet](#not-done-yet).
 
 ---
 
@@ -475,6 +476,9 @@ Those files are not in git and not recoverable from the vault they configure.
 |---|---|---|---|
 | Vaultwarden | `:443` (**public**, Funnel) | `/opt/appdata/vaultwarden` | [README](apps/vaultwarden/README.md) |
 | Immich | `:8444` tailnet only | `/opt/appdata/immich` + `/mnt/pool/photos` | [README](apps/immich/README.md) |
+| Mealie | `:8445` tailnet only | `/opt/appdata/mealie` | [README](apps/mealie/README.md) |
+| Vikunja | `:8446` tailnet only | `/opt/appdata/vikunja` | [README](apps/vikunja/README.md) |
+| Memos | `:8447` tailnet only | `/opt/appdata/memos` | [README](apps/memos/README.md) |
 
 Each app's state and how it must be captured for backup is recorded in
 [`docs/backup-inventory.md`](docs/backup-inventory.md) as it is deployed.
@@ -696,7 +700,10 @@ Recorded because each one cost real time and none of them are obvious.
   that file rather than starting from a blank page. Add to it when you add an
   app — the per-app "how" (SQLite `.backup`, `pg_dump`, plain copy) is easy to
   know now and expensive to reconstruct later.
-- **Applications.** Phase 3. Vaultwarden is live; Immich is next.
+- **Applications.** Phase 3. Vaultwarden, Immich, Mealie, Vikunja and Memos
+  are deployed. Still to come: Home Assistant and Z-Wave JS UI (3d), the
+  Homepage dashboard with a read-only `podman.socket` proxy, and Frigate
+  (deferred to Stage 2, with the cameras).
 - **File Browser: dropped, deliberately.** It was archived 2026-09-01 with the
   maintainer telling users to treat it as unmaintained. Ad-hoc file access is
   SFTP over Tailscale SSH, which already exists and adds no attack surface. If
