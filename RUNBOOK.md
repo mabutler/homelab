@@ -628,8 +628,13 @@ Recorded because each one cost real time and none of them are obvious.
   units but never unlinked one that went away, so moving a component out of an
   app directory left the symlink, and Quadlet kept generating and starting the
   service. The repository said gone, the machine said running. It now prunes
-  links pointing into an app directory that no longer match a file there, and
-  stops the service first.
+  links pointing into an app directory that no longer match a file there.
+- **A container can outlive its unit, and then nothing manages it.** Removing a
+  Quadlet unit and reloading leaves systemd with nothing to stop while podman
+  keeps the container running — invisible to `systemctl`, absent from the
+  repository, still holding its ports. `deploy.sh` stops the service *and*
+  then the container when it prunes. To find strays by hand, compare
+  `sudo podman ps` against `systemctl list-units 'immich*'`.
 - **`podman ps` without sudo shows nothing, and that is not an error.** Rootless
   and rootful Podman have separate stores. Your user's store is empty; the
   services live in root's. Every `podman` command in this runbook needs `sudo`.

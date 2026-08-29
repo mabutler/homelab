@@ -212,6 +212,28 @@ prune_orphans() {
         fi
 
         run rm -f -- "$link"
+
+        # And then the container itself.
+        #
+        # Stopping the service is not enough if the unit was ALREADY gone by the
+        # time we got here — a link removed by hand, or a previous deploy from
+        # before this pruning existed. systemd then has nothing to stop, while
+        # podman keeps running a container nothing manages: invisible to
+        # systemctl, absent from the repository, still holding its ports and
+        # burning CPU. Nothing else will ever clean that up.
+        #
+        # Only the name derived from the unit we just pruned, so this can never
+        # reach a container belonging to something else.
+        if [[ "$base" == *.container && -z "$DRY_RUN" ]]; then
+            svc="${base%.container}"
+            if [[ "$(podman container inspect -f '{{.State.Running}}' "$svc" 2>/dev/null || true)" == "true" ]]; then
+                warn "$svc is still running with no unit behind it — stopping the container"
+                run podman stop --time 30 -- "$svc" || true
+            fi
+            if podman container exists "$svc" 2>/dev/null; then
+                run podman rm -f -- "$svc" || true
+            fi
+        fi
         DEPLOY_CHANGED=1
         APP_CHANGED=1
     done
