@@ -544,6 +544,15 @@ Recorded because each one cost real time and none of them are obvious.
   re-authentication rather than a preference change. `tailscale up
   --advertise-tags=... --force-reauth` also works but wants every other pref
   restated to avoid resetting them.
+- **`findmnt <target>` prints one line PER MOUNT at that target.** Capturing it
+  into a scalar gives a multi-line string that fails every comparison, and the
+  error message then splatters the extra lines across the log. Use `-f`
+  (first-only), or `mapfile` when the count matters.
+- **`mount -a` restacked the pool on every run.** It decides "already mounted"
+  by source *and* target; fstab's source for the pool is the branch list while
+  mergerfs reports `fsname=`, so they never matched and it mounted again each
+  time — four deep before anything caught it. `40-storage.sh` now runs
+  `mount -a -t nomergerfs` and mounts the pool by target.
 - **`nofail` hides mount failures from `mount -a`.** It exits 0 having skipped
   the entry. Correct for boot — a dead drive should not strand the host — but
   it means a check after `mount -a` must re-attempt the mount to see the error,

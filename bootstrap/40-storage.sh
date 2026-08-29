@@ -186,8 +186,24 @@ fi
 # Mount
 # ---------------------------------------------------------------------------
 if [[ -z "$DRY_RUN" ]]; then
+    # `mount -a` decides "already mounted" by matching source AND target against
+    # the mount table. For the pool those do not match: fstab's source is the
+    # branch list, while mergerfs reports whatever `fsname=` says. So mount -a
+    # concluded the pool was not mounted and mounted it AGAIN, every run — this
+    # host reached a stack four deep before anything noticed.
+    #
+    # So exclude mergerfs from the sweep and mount the pool by target, which is
+    # unambiguous. `findmnt -M` is true if anything is mounted there at all.
     log "mounting everything in fstab that is not already mounted"
-    mount -a || warn "mount -a reported a problem — the checks below will say which"
+    mount -a -t nomergerfs \
+        || warn "mount -a reported a problem — the checks below will say which"
+
+    if findmnt -M "$POOL_MNT" >/dev/null 2>&1; then
+        dbg "$POOL_MNT already mounted"
+    else
+        log "mounting $POOL_MNT"
+        mount -- "$POOL_MNT" || warn "mounting the pool failed — see below"
+    fi
 fi
 
 # ---------------------------------------------------------------------------
@@ -199,7 +215,9 @@ if [[ -z "$DRY_RUN" ]]; then
         [[ "${DRIVE_ROLE[$s]}" == "ssd" ]] && continue
         lbl="${DRIVE_LABEL[$s]}"
         mnt="$(mountpoint_for "$lbl")"
-        src="$(findmnt -no SOURCE -- "$mnt" 2>/dev/null || true)"
+        # -f: first match only. findmnt prints one line per mount at a target,
+        # and a multi-line value silently breaks every comparison below.
+        src="$(findmnt -fno SOURCE -- "$mnt" 2>/dev/null || true)"
         if [[ -z "$src" ]]; then
             err "$lbl is not mounted at $mnt"
             bad_mounts=$(( bad_mounts + 1 ))
@@ -225,9 +243,13 @@ if [[ -z "$DRY_RUN" ]]; then
     #
     # Assert what actually matters instead — that /mnt/pool is a mount at all,
     # and that it is a mergerfs one rather than the SSD directory underneath.
-    pool_fstype="$(findmnt -no FSTYPE -- "$POOL_MNT" 2>/dev/null || true)"
-    pool_source="$(findmnt -no SOURCE -- "$POOL_MNT" 2>/dev/null || true)"
-    dbg "$POOL_MNT fstype=${pool_fstype:-<none>} source=${pool_source:-<none>}"
+    # One line per mount at this target, so read them all: the count is itself
+    # a fact worth knowing, and taking [0] is what keeps the comparison sane.
+    mapfile -t pool_types < <(findmnt -no FSTYPE -- "$POOL_MNT" 2>/dev/null || true)
+    pool_fstype="${pool_types[0]:-}"
+    pool_depth="${#pool_types[@]}"
+    pool_source="$(findmnt -fno SOURCE -- "$POOL_MNT" 2>/dev/null || true)"
+    dbg "$POOL_MNT fstype=${pool_fstype:-<none>} source=${pool_source:-<none>} depth=$pool_depth"
 
     pool_ok=0
     case "${pool_fstype,,}" in
@@ -254,6 +276,16 @@ if [[ -z "$DRY_RUN" ]]; then
             err "bump since it was built. Rebuild it:  paru -S --rebuild mergerfs"
         fi
         die "pool did not assemble"
+    fi
+
+    # Stacking is not fatal — the top layer works and every layer is the same
+    # mergerfs — but it hides drives on unmount and is pure accumulated damage.
+    if (( pool_depth > 1 )); then
+        warn "$POOL_MNT is mounted $pool_depth times over, from repeated runs of this"
+        warn "script before it excluded mergerfs from 'mount -a'. Nothing is lost."
+        warn "Peel the extras off (the last unmount should leave one):"
+        warn "  sudo umount $POOL_MNT      # x$(( pool_depth - 1 ))"
+        warn "then re-run this script and the depth should read 1."
     fi
 
     findmnt -no TARGET,SOURCE,FSTYPE,SIZE,AVAIL "$POOL_MNT" >&2
