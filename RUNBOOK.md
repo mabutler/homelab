@@ -622,6 +622,11 @@ Recorded because each one cost real time and none of them are obvious.
   re-authentication rather than a preference change. `tailscale up
   --advertise-tags=... --force-reauth` also works but wants every other pref
   restated to avoid resetting them.
+- **A container that dropped privileges cannot write a root-owned volume.**
+  State directories are owned to match the uid the image runs as, per app, in
+  `system/tmpfiles/`. Vikunja (uid 1000, no `PUID` support) failed this way and
+  the log said only `config file not found, using defaults` — which is normal
+  output and not the error. Look past the first complaint to the fatal one.
 - **Podman will not create a bind-mount source directory.** It fails with
   `statfs <path>: no such file or directory` rather than doing what `docker run`
   trained you to expect. For a path on the pool the directory cannot come from

@@ -34,6 +34,15 @@ redeploy. `deploy.sh` restarts the container when the env file changes.
 A database referencing attachments that were not restored is worse than
 neither.
 
+## The uid
+
+**Vikunja runs as uid 1000 inside the container and does not support
+`PUID`/`PGID`.** Its data directories are therefore owned `1000:1000` in
+`system/tmpfiles/apps-3c.conf`. Root-owned directories give a container that
+starts, logs `config file not found, using defaults` — which is normal and not
+the problem — and then fails on the first write. If you ever move or recreate
+these paths by hand, chown them.
+
 ## Updates
 
 `latest` with `AutoUpdate=registry`. This is a single container over SQLite
