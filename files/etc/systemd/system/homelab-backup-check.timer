@@ -1,0 +1,12 @@
+[Unit]
+Description=Weekly restic repository verification
+
+[Timer]
+# Saturday 04:00 — before Sunday's prune, so a repository found damaged is
+# noticed while the snapshots prune would remove still exist.
+OnCalendar=Sat *-*-* 04:00:00
+Persistent=true
+RandomizedDelaySec=30m
+
+[Install]
+WantedBy=timers.target

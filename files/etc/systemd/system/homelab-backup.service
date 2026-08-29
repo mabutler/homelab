@@ -1,0 +1,23 @@
+[Unit]
+Description=Back up to Backblaze B2 with restic
+Documentation=file:///etc/homelab/repo/docs/backup-inventory.md
+OnFailure=ntfy-alert@%n.service
+
+# The pool holds the photos. The script refuses without it, but declaring it
+# here means systemd does not even start the job on a degraded boot.
+RequiresMountsFor=/mnt/pool /opt/appdata
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/homelab-backup
+
+# A backup that has not finished in four hours has gone wrong. Without this it
+# would still be running when the next one fires.
+TimeoutStartSec=4h
+
+# Backups are background work: never at the expense of the services people are
+# actually using. IOSchedulingClass=idle matters most — restic reading the
+# whole photo library will otherwise make everything else feel slow.
+Nice=19
+IOSchedulingClass=idle
+CPUWeight=20

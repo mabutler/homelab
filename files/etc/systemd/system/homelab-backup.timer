@@ -1,0 +1,19 @@
+[Unit]
+Description=Daily restic backup
+
+[Timer]
+# 02:30, after podman-auto-update has NOT yet run (05:00) — a backup taken
+# before the day's container updates is the one you want if an update is what
+# broke things.
+OnCalendar=*-*-* 02:30:00
+
+# Missed while the machine was off? Run it on the next boot rather than waiting
+# a full day. A home server is not on all the time.
+Persistent=true
+
+# Nothing else here runs at 02:30, but the whole point of a backup is that it
+# happens even when something else is busy.
+RandomizedDelaySec=15m
+
+[Install]
+WantedBy=timers.target

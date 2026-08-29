@@ -1,0 +1,195 @@
+#!/usr/bin/env bash
+# homelab-backup — take a consistent backup of everything that matters and send
+# it to Backblaze B2 with restic.
+#
+# THE ONE IDEA THIS SCRIPT EXISTS FOR
+#
+# A running database cannot be backed up by copying its files. You get a torn
+# image that restores as corruption, and you discover that on the day you need
+# it. So every database here is dumped first, by the mechanism its engine
+# provides, and the LIVE database files are excluded from the snapshot.
+#
+# That exclusion is deliberate and worth defending: a snapshot holding both a
+# torn db.sqlite3 and a good dump of it is an invitation to restore the wrong
+# one at 2am. What reaches the repository is only ever the good copy, and the
+# dumps carry a .dump suffix so the exclusions cannot swallow them.
+#
+#   homelab-backup            dump, back up, prune, report
+#   homelab-backup --check    verify repository integrity instead
+#
+# Refuses rather than producing a backup it cannot vouch for.
+
+set -euo pipefail
+
+ENV_FILE=/etc/homelab/backup.env
+STAGING=/var/lib/homelab/backup
+APPDATA=/opt/appdata
+REPO_LINK=/etc/homelab/repo
+
+log() { printf '==> %s\n' "$*"; }
+die() { printf 'homelab-backup: %s\n' "$*" >&2; exit 1; }
+
+[[ -r "$ENV_FILE" ]] || die "no $ENV_FILE — run bootstrap/80-backup.sh"
+# shellcheck source=/dev/null
+source "$ENV_FILE"
+
+: "${RESTIC_REPOSITORY:?not set in $ENV_FILE}"
+: "${RESTIC_PASSWORD:?not set in $ENV_FILE}"
+export RESTIC_REPOSITORY RESTIC_PASSWORD
+export B2_ACCOUNT_ID="${B2_ACCOUNT_ID:-}" B2_ACCOUNT_KEY="${B2_ACCOUNT_KEY:-}"
+
+KEEP_DAILY="${RESTIC_KEEP_DAILY:-7}"
+KEEP_WEEKLY="${RESTIC_KEEP_WEEKLY:-5}"
+KEEP_MONTHLY="${RESTIC_KEEP_MONTHLY:-12}"
+
+# ---------------------------------------------------------------------------
+# --check
+# ---------------------------------------------------------------------------
+# `restic check` verifies structure and that every referenced blob exists.
+# --read-data-subset actually downloads and hashes a slice, which is the only
+# thing here that catches bit rot at the far end. Reading the whole repository
+# would cost a full download in B2 egress every time, so a rotating fraction is
+# the compromise — over a few months, everything gets read.
+if [[ "${1:-}" == "--check" ]]; then
+    log "checking repository"
+    if ! restic check --read-data-subset=5%; then
+        /usr/local/bin/hc-ping HC_BACKUP_CHECK_URL fail
+        die "restic check FAILED — the repository is damaged"
+    fi
+    /usr/local/bin/hc-ping HC_BACKUP_CHECK_URL
+    log "repository is intact"
+    exit 0
+fi
+
+# ---------------------------------------------------------------------------
+# Preconditions
+# ---------------------------------------------------------------------------
+# If the pool is not mounted, /mnt/pool/photos is absent or an empty directory
+# on the SSD. Backing that up writes an empty library into a new snapshot, and
+# retention then prunes the good snapshots away behind it. That is how a backup
+# system deletes your data.
+if ! mountpoint -q /mnt/pool; then
+    die "/mnt/pool is not mounted — refusing to back up an empty pool over good snapshots"
+fi
+
+restic snapshots >/dev/null 2>&1 \
+    || die "cannot reach the repository. Check $ENV_FILE, or initialise it: restic init"
+
+# ---------------------------------------------------------------------------
+# Dump every database
+# ---------------------------------------------------------------------------
+rm -rf -- "$STAGING"
+mkdir -p -- "$STAGING/db" "$STAGING/secrets"
+chmod -R 0700 -- "$STAGING"
+
+# sqlite_dump <name> <path-to-db>
+#
+# `.backup` is SQLite's online backup API: it copies pages under a read lock
+# and retries on contention, producing a file that is a valid database. `cp`
+# does not, and neither does copying the -wal and -shm files alongside it.
+sqlite_dump() {
+    # Two statements: `local a=1 b="$a"` evaluates b before a is assigned.
+    local name="$1" db="$2"
+    local out="$STAGING/db/$name.sqlite3.dump"
+    [[ -f "$db" ]] || { log "skip $name — no database at $db"; return 0; }
+    log "dumping $name"
+    sqlite3 "$db" ".backup '$out'" || die "sqlite backup of $name failed"
+
+    # Prove it reads back before letting it into the repository. A dump that
+    # cannot be opened is worse than an obvious failure, because it looks fine.
+    sqlite3 "$out" 'PRAGMA integrity_check;' | grep -qx ok \
+        || die "$name dumped, but the copy fails integrity_check"
+}
+
+sqlite_dump vaultwarden "$APPDATA/vaultwarden/db.sqlite3"
+sqlite_dump mealie      "$APPDATA/mealie/mealie.db"
+sqlite_dump vikunja     "$APPDATA/vikunja/db/vikunja.db"
+sqlite_dump memos       "$APPDATA/memos/memos_prod.db"
+
+# Immich's PostgreSQL, from inside the running container — that is where the
+# client and server versions are guaranteed to match.
+if [[ "$(podman container inspect -f '{{.State.Running}}' immich-database 2>/dev/null || true)" == "true" ]]; then
+    log "dumping immich postgres"
+    podman exec immich-database \
+        pg_dump -U "${IMMICH_DB_USER:-postgres}" --clean --if-exists "${IMMICH_DB_NAME:-immich}" \
+        > "$STAGING/db/immich.sql.dump" \
+        || die "pg_dump of immich failed"
+    [[ -s "$STAGING/db/immich.sql.dump" ]] || die "the immich dump is empty"
+    gzip -- "$STAGING/db/immich.sql.dump"
+else
+    log "skip immich postgres — immich-database is not running"
+fi
+
+# ---------------------------------------------------------------------------
+# Collect the secrets as real files
+# ---------------------------------------------------------------------------
+# /etc/homelab/apps/*.env are SYMLINKS into the repository, and restic stores a
+# symlink as a symlink — it does not follow it. Backing up that directory would
+# archive a set of dangling pointers and nothing else.
+#
+# These are also the files that make a restored machine THIS machine: they are
+# gitignored, so the repository does not carry them and nothing else will.
+log "collecting secrets"
+copy_real() {
+    local src="$1" dst="$STAGING/secrets/$2"
+    src="$(readlink -f -- "$src" 2>/dev/null || true)"
+    [[ -f "$src" ]] || return 0
+    install -m 0600 -- "$src" "$dst"
+}
+
+repo="$(readlink -f -- "$REPO_LINK" 2>/dev/null || true)"
+if [[ -d "$repo" ]]; then
+    copy_real "$repo/host.conf" host.conf
+    for f in "$repo"/apps/*/*.env; do
+        [[ -f "$f" ]] || continue
+        copy_real "$f" "$(basename -- "$f")"
+    done
+fi
+copy_real /etc/homelab/alerting.env alerting.env
+copy_real /etc/homelab/backup.env   backup.env
+
+# ---------------------------------------------------------------------------
+# Back up
+# ---------------------------------------------------------------------------
+# The dumps and secrets, plus everything that is a plain file: attachments,
+# Vaultwarden's RSA keys (without which a good database is unreadable), recipe
+# images, and the photo library.
+#
+# The excludes drop live databases so only the dumps above represent them. They
+# match *.sqlite3 and *.db, which is why the dumps end in .dump.
+log "backing up"
+restic backup \
+    --tag homelab \
+    --exclude-caches \
+    --exclude '*.sqlite3' --exclude '*.sqlite3-wal' --exclude '*.sqlite3-shm' \
+    --exclude '*.db'      --exclude '*.db-wal'      --exclude '*.db-shm' \
+    --exclude "$APPDATA/immich/postgres" \
+    --exclude "$APPDATA/immich/model-cache" \
+    --exclude "$APPDATA/immich/thumbs" \
+    "$STAGING" "$APPDATA" /mnt/pool/photos \
+    || die "restic backup failed"
+
+# ---------------------------------------------------------------------------
+# Retention
+# ---------------------------------------------------------------------------
+# forget every run, prune only on Sundays: prune rewrites pack files and is the
+# expensive operation, in wall clock and in B2 transactions.
+log "applying retention"
+restic forget \
+    --tag homelab \
+    --keep-daily "$KEEP_DAILY" \
+    --keep-weekly "$KEEP_WEEKLY" \
+    --keep-monthly "$KEEP_MONTHLY" \
+    || die "restic forget failed"
+
+if [[ "$(date +%u)" == 7 ]]; then
+    log "pruning"
+    restic prune || die "restic prune failed"
+fi
+
+# The staging directory holds every secret on this host in one place. It does
+# not outlive the run.
+rm -rf -- "$STAGING"
+
+/usr/local/bin/hc-ping HC_BACKUP_URL
+log "done"

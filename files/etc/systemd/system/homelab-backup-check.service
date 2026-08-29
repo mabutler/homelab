@@ -1,0 +1,11 @@
+[Unit]
+Description=Verify the restic repository
+Documentation=file:///etc/homelab/repo/docs/backup-inventory.md
+OnFailure=ntfy-alert@%n.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/homelab-backup --check
+TimeoutStartSec=6h
+Nice=19
+IOSchedulingClass=idle

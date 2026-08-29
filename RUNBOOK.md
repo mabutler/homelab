@@ -5,7 +5,8 @@ is reading it at 11pm with something broken, which may well be you having
 forgotten all of it.
 
 Current as of Phase 3: `bootstrap/` complete; Vaultwarden live and public via
-Funnel; Immich, Mealie, Vikunja, Memos and Homepage on the tailnet. See
+Funnel; Immich, Mealie, Vikunja, Memos and Homepage on the tailnet;
+nightly restic backups to B2. See
 [Not done yet](#not-done-yet).
 
 ---
@@ -130,6 +131,8 @@ anyone who knows it can read every alert and publish convincing fakes.
 | `SMART counters moved` | The weekly snapshot found a watched counter changed. | This is the trend, not a single reading. Act on the rate. |
 | `containers updated` | `podman auto-update` applied something. | Read it. Nothing to do unless something also failed. |
 | `container auto-update FAILED` | The update run errored. | `journalctl -u podman-auto-update -n 100`. Containers are on their previous images. |
+| `homelab-backup.service failed` | The nightly backup errored. **Nothing was uploaded.** | `journalctl -u homelab-backup -n 100`. Most likely: the pool unmounted, B2 credentials, or a database that would not dump. |
+| `homelab-backup-check.service failed` | `restic check` found the repository damaged. | Do not prune. `journalctl -u homelab-backup-check -n 100`, then see [Backups](#backups). |
 | Healthchecks: *check is down* | A timer stopped pinging. **Nothing on the host sent this** — the hosted service noticed silence. | The machine may be dead. Try the three doors above. |
 
 The heartbeat is the only alert that fires by **absence**. Everything else
@@ -572,6 +575,76 @@ Vaultwarden is private.
 
 ---
 
+## Backups
+
+`restic` to Backblaze B2, nightly at 02:30, plus a weekly repository
+verification on Saturdays at 04:00. What is captured and *how* is specified in
+[`docs/backup-inventory.md`](docs/backup-inventory.md); `homelab-backup`
+implements it.
+
+```bash
+sudo systemctl start homelab-backup.service    # run one now
+journalctl -u homelab-backup -f
+sudo systemctl list-timers 'homelab-backup*'
+
+set -a; . /etc/homelab/backup.env; set +a      # then restic directly:
+restic snapshots
+restic stats latest
+```
+
+### The rule the whole script is built around
+
+**A running database cannot be backed up by copying its files.** Every database
+is dumped first — SQLite via `.backup`, Immich's Postgres via `pg_dump` inside
+the container — and the **live database files are excluded from the snapshot**.
+The repository never contains a torn copy sitting next to a good one, because
+that is how you restore the wrong one at 2am. Dumps carry a `.dump` suffix so
+the exclusions cannot swallow them, and each SQLite dump is opened and
+`integrity_check`ed before it is allowed into the repository.
+
+### The refusals
+
+- **`/mnt/pool` not mounted** → refuses. Backing up an absent photo library
+  writes an empty snapshot, and retention then prunes the good ones away behind
+  it. That is how a backup system deletes your data.
+- **Repository unreachable** → refuses rather than continuing silently.
+- **A dump that fails `integrity_check`** → refuses.
+
+### What restic does NOT follow
+
+`/etc/homelab/apps/*.env` are symlinks into the repository, and **restic stores
+a symlink as a symlink**. Backing up that directory would archive a set of
+pointers. So `host.conf` and every app `.env` are copied into the staging
+directory as real files first. Those are the files that make a restored machine
+*this* machine — they are gitignored, so nothing else carries them.
+
+### Retention and cost
+
+7 daily, 5 weekly, 12 monthly. `forget` runs every night; `prune` only on
+Sundays, because prune rewrites pack files and is the expensive operation in
+both wall clock and B2 transactions.
+
+### The key
+
+`RESTIC_PASSWORD` in `host.conf` is the encryption key for the entire
+repository. **There is no recovery without it, by design.** It must live
+somewhere reachable when Vaultwarden is the thing that is down.
+
+### If `restic check` reports damage
+
+Do not prune — prune rewrites the pack files that `check` just told you it
+cannot trust. Read the failure, then:
+
+```bash
+restic check --read-data          # full verification, downloads everything
+restic repair snapshots           # drops snapshots referencing lost data
+```
+
+A repository that has lost data is not automatically worthless: older snapshots
+usually survive. Establish what is intact before deleting anything.
+
+---
+
 ## Verification
 
 ```bash
@@ -710,15 +783,12 @@ Recorded because each one cost real time and none of them are obvious.
   swap two labels in `drives.conf` and confirm `40` refuses; stop
   `homelab-heartbeat.timer` and confirm the dead-man switch alerts; boot a
   snapshot and return cleanly.
-- **Backups.** Phase 4. Nothing is backed up off this machine. SnapRAID is
-  not a backup — it protects against drive failure, not against deletion,
-  corruption, fire or theft.
-  **What needs backing up, and how each thing must be captured, is being
-  written down as applications are deployed:**
-  [`docs/backup-inventory.md`](docs/backup-inventory.md). Phase 4 implements
-  that file rather than starting from a blank page. Add to it when you add an
-  app — the per-app "how" (SQLite `.backup`, `pg_dump`, plain copy) is easy to
-  know now and expensive to reconstruct later.
+- **A restore that has actually been performed.** The backups run, but a
+  backup nobody has restored is a hypothesis, not a backup. The drill is at the
+  end of [`docs/backup-inventory.md`](docs/backup-inventory.md) and belongs in
+  Phase 5, before the failure drills.
+  Add to that file when you add an app — the per-app "how" (`.backup`,
+  `pg_dump`, plain copy) is easy to know now and expensive to reconstruct.
 - **Applications.** Phase 3. Vaultwarden, Immich, Mealie, Vikunja, Memos and
   Homepage are deployed. Still to come: Home Assistant and Z-Wave JS UI (3d),
   the

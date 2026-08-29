@@ -52,6 +52,40 @@ KEYMAP="us"
 # see apps/vaultwarden/tailnet-policy.hujson.
 TAILSCALE_TAGS=""               # e.g. tag:server
 
+# --- backups ---------------------------------------------------------------
+#
+# restic to Backblaze B2. See docs/backup-inventory.md for WHAT is backed up
+# and why each thing is captured the way it is.
+
+# The repository. For B2:  b2:BUCKETNAME:path
+# Get this exactly right — a typo does not fail, it creates a SECOND, empty
+# repository, and the first you learn of it is a restore that comes back empty.
+# bootstrap/80-backup.sh deliberately does not run `restic init` for that reason.
+RESTIC_REPOSITORY=""            # e.g. b2:fidelacchius-backup:/
+
+# THE ENCRYPTION KEY FOR EVERY BACKUP YOU HAVE.
+#
+# Lose it and the repository is unreadable noise. There is no recovery — that
+# is the design, not a limitation. Generate it once:
+#
+#   openssl rand -base64 48
+#
+# Then store it in Vaultwarden AND somewhere reachable when Vaultwarden is the
+# thing that is down. Printed, in a drawer, counts.
+RESTIC_PASSWORD=""
+
+# A Backblaze APPLICATION key, scoped to that one bucket — not the master key.
+# The master key can delete every bucket on the account, and this one lives on
+# a machine that is publicly reachable on port 443.
+B2_ACCOUNT_ID=""                # the applicationKeyId
+B2_ACCOUNT_KEY=""               # the applicationKey
+
+# Retention. Defaults are sane for a home server; a photo library changes
+# slowly and a year of monthlies costs little.
+RESTIC_KEEP_DAILY="7"
+RESTIC_KEEP_WEEKLY="5"
+RESTIC_KEEP_MONTHLY="12"
+
 # --- storage ---------------------------------------------------------------
 
 # Size of the Btrfs root partition. The remainder of the SSD becomes the ext4
@@ -78,6 +112,8 @@ HC_SNAPRAID_SYNC_URL=""         # nightly
 HC_SNAPRAID_SCRUB_URL=""        # weekly
 HC_SMART_URL=""                 # weekly SMART attribute snapshot
 HC_AUTOUPDATE_URL=""            # daily container auto-update
+HC_BACKUP_URL=""                # nightly restic backup
+HC_BACKUP_CHECK_URL=""          # weekly restic repository verification
 
 # Any HC_* variable added here is written to /etc/homelab/alerting.env and
 # reachable as `hc-ping HC_WHATEVER_URL`. bootstrap/60-alerting.sh does not

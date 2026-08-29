@@ -4,8 +4,9 @@
 applications are deployed rather than at Phase 4, because the "how" is
 per-application knowledge that is easy to have and hard to reconstruct.
 
-Nothing here is implemented yet — Phase 4 (restic to Backblaze B2) is what
-implements it. This is the specification that phase has to satisfy.
+**Implemented** by `files/usr/local/bin/homelab-backup`, run nightly by
+`homelab-backup.timer`. This file remains the specification — when it and the
+script disagree, the script is the bug.
 
 > **The rule that generates most of this file:** a running database cannot be
 > backed up by copying its files. You get a torn image that restores as
@@ -24,7 +25,7 @@ Losing these means losing something that cannot be recreated from anywhere.
 |---|---|
 | Path | `/opt/appdata/vaultwarden` |
 | Contains | `db.sqlite3`, attachments, **RSA keys**, `config.json`, icon cache |
-| Capture | `sqlite3 db.sqlite3 ".backup '/tmp/vw.sqlite3'"` as a **pre-hook**, then back up the snapshot |
+| Capture | `sqlite3 db.sqlite3 ".backup ..."`, verified with `PRAGMA integrity_check` before it is allowed into the repository |
 | Frequency | Daily |
 
 **Never copy `db.sqlite3` from a running server.** A live-copied SQLite file
@@ -48,14 +49,11 @@ or in a second password manager.
 | Frequency | Daily |
 
 ```bash
-podman exec immich-database pg_dump -U postgres --clean --if-exists immich \
-  | gzip > /opt/appdata/immich/dump/immich.sql.gz
+podman exec immich-database pg_dump -U postgres --clean --if-exists immich
 ```
 
-Immich's own docs are specific that a plain `pg_dumpall` is not sufficient for
-some versions because of the vector extensions — **check the current Immich
-backup documentation when Phase 4 is written**, not this file, since it changes
-with their schema.
+Immich's schema and its vector extensions change; **check their current backup
+documentation when something looks wrong**, not this file.
 
 ### Immich — the photos
 
@@ -122,6 +120,22 @@ so it belongs in the host-identity set above, and in Vaultwarden.
   the tested path. Snapshots cover the day-to-day mistakes.
 
 ---
+
+## How it runs
+
+| | |
+|---|---|
+| Nightly | `homelab-backup.timer`, 02:30, `Persistent=true` so a machine that was off catches up |
+| Weekly | `homelab-backup-check.timer`, Saturday 04:00, `restic check --read-data-subset=5%` |
+| Retention | 7 daily, 5 weekly, 12 monthly. `forget` nightly, `prune` Sundays only |
+| Reports | ntfy on failure, Healthchecks `HC_BACKUP_URL` and `HC_BACKUP_CHECK_URL` on success |
+
+The check runs on **Saturday**, before Sunday's prune, so a repository found
+damaged is noticed while the snapshots prune would remove still exist.
+
+Live database files are **excluded** from the snapshot — only the verified
+dumps represent them. A repository holding a torn `db.sqlite3` beside a good
+`vaultwarden.sqlite3.dump` is how you restore the wrong one at 2am.
 
 ## Restore drills
 
