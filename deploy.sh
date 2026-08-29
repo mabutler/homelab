@@ -130,6 +130,31 @@ are handled for you."
     done
 }
 
+# Has the secrets file been edited since the service last started?
+#
+# deploy.sh links units, so a changed UNIT is visible to it — but a changed
+# `.env` is not. systemd reads EnvironmentFile at start and never again, and
+# nothing else notices either, so editing a secret and re-running deploy.sh
+# reported "already running, unit unchanged" and left the old value live. The
+# setting appears applied and is not, which for something like SIGNUPS_ALLOWED
+# means believing a door is shut while it is open.
+#
+# Comparing mtime against the service's actual start time needs no stored state
+# and cannot drift.
+env_newer_than_service() {
+    local app="$1" dir="$2" started f
+    started="$(systemctl show -p ActiveEnterTimestamp --value "$app.service" 2>/dev/null || true)"
+    [[ -n "$started" ]] || return 1
+    started="$(date -d "$started" +%s 2>/dev/null || true)"
+    [[ -n "$started" ]] || return 1
+
+    for f in "$dir"/*.env; do
+        [[ -f "$f" ]] || continue
+        (( "$(stat -c %Y -- "$f")" > started )) && return 0
+    done
+    return 1
+}
+
 remove_app() {
     local app="$1" f target
     while read -r f; do
@@ -245,13 +270,20 @@ main() {
             [[ "$a" == "$app" ]] && was_changed=1
         done
 
-        if (( is_active && ! was_changed )); then
-            ok "$app already running, unit unchanged"
+        local why=''
+        if (( was_changed )); then
+            why='its unit changed'
+        elif (( is_active )) && env_newer_than_service "$app" "$APPS_DIR/$app"; then
+            why='its environment file changed since it started'
+        fi
+
+        if (( is_active )) && [[ -z "$why" ]]; then
+            ok "$app already running, nothing changed"
             continue
         fi
 
         if (( is_active )); then
-            log "restarting $app (its unit changed)"
+            log "restarting $app — $why"
             run systemctl restart "$app.service"
         else
             log "starting $app"

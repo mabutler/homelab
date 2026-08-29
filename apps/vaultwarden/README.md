@@ -164,7 +164,7 @@ Off by default, deliberately. To use it, uncomment `ADMIN_TOKEN` with an
 Argon2 hash (not a password):
 
 ```bash
-podman run --rm -it docker.io/vaultwarden/server:latest /vaultwarden hash
+sudo podman run --rm -it docker.io/vaultwarden/server:latest /vaultwarden hash
 ```
 
 Then restart, do what you need at `/admin`, and comment it out again. Once

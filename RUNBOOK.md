@@ -339,6 +339,18 @@ scrub, so the write-heaviest role is on a drive with a clean link.
 Rootful Podman, Quadlet units, no daemon. `systemctl` and `journalctl` are the
 management interface.
 
+**Every `podman` command here needs `sudo`.** Rootless and rootful Podman keep
+entirely separate container and image stores, so a bare `podman ps` as your own
+user reports an empty machine while every service is running normally — it is
+looking at your store, which is empty and always will be. This is the single
+most confusing thing about the setup:
+
+```bash
+sudo podman ps                      # what is actually running
+sudo podman exec vaultwarden printenv | grep -i signups
+sudo podman images
+```
+
 ```
 /etc/containers/systemd/     Quadlet units (symlinks into /opt/stack/apps/)
 /opt/appdata/<app>/          application state, ext4, NOT snapshot-rolled-back
@@ -544,6 +556,27 @@ Recorded because each one cost real time and none of them are obvious.
   re-authentication rather than a preference change. `tailscale up
   --advertise-tags=... --force-reauth` also works but wants every other pref
   restated to avoid resetting them.
+- **`podman ps` without sudo shows nothing, and that is not an error.** Rootless
+  and rootful Podman have separate stores. Your user's store is empty; the
+  services live in root's. Every `podman` command in this runbook needs `sudo`.
+- **Editing an app's `.env` does nothing until the container restarts.**
+  systemd reads `EnvironmentFile` at start and never again, and `deploy.sh`
+  used to report "already running, unit unchanged" because only the *unit* was
+  tracked. A setting looked applied while the old value stayed live — which for
+  `SIGNUPS_ALLOWED` meant an open registration page on a vault believed closed.
+  `deploy.sh` now restarts when the env file is newer than the service's
+  `ActiveEnterTimestamp`.
+- **A guard that reads a config file is checking a claim, not a fact.** The
+  funnel guard read `vaultwarden.env`, which said `SIGNUPS_ALLOWED=false` while
+  the running container had `true` — it would have published an open
+  registration page to the internet while reporting registration shut. It now
+  reads `podman exec vaultwarden printenv` and reports drift between the two.
+  Third instance of this shape, after `sshd -t` and the mergerfs fstype: **ask
+  the running thing what it believes.**
+- **Vaultwarden's `config.json` beats the environment.** Anything saved from
+  the admin page is persisted to `config.json` in the data directory and takes
+  priority, so the env file stops being the truth. The funnel guard refuses to
+  vouch for anything if that file exists.
 - **`findmnt <target>` prints one line PER MOUNT at that target.** Capturing it
   into a scalar gives a multi-line string that fails every comparison, and the
   error message then splatters the extra lines across the log. Use `-f`
