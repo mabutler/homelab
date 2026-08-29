@@ -29,7 +29,11 @@ network, so Homepage is the only thing that can reach it.
 
 ## The config is in git
 
-`apps/homepage/config/` is bind-mounted to `/app/config`. The dashboard's
+`apps/homepage/config/` is bind-mounted to `/app/config`, through
+`/etc/homelab/repo` — a symlink `deploy.sh` maintains pointing at wherever this
+repository is checked out. Quadlet units are static files with no variable
+substitution, so a hardcoded `/opt/stack` would break any host whose clone
+lives somewhere else. The dashboard's
 contents are configuration, not state, so they are version controlled and
 edited in the repository:
 

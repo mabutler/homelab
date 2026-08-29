@@ -2,7 +2,6 @@
 Description=Homepage — the dashboard
 Documentation=https://gethomepage.dev
 
-RequiresMountsFor=/opt/stack
 After=network-online.target
 Wants=network-online.target
 
@@ -26,7 +25,10 @@ PublishPort=127.0.0.1:3000:3000
 # Not read-only: Homepage writes into this directory on first start if a file
 # is missing. Everything it would generate is shipped, so in practice it does
 # not write, but refusing it the ability turns a missing file into a crash.
-Volume=/opt/stack/apps/homepage/config:/app/config:Z
+# /etc/homelab/repo is a symlink to wherever this repository is checked out,
+# maintained by deploy.sh. Quadlet units have no variable substitution, so
+# hardcoding /opt/stack here would break any host whose clone lives elsewhere.
+Volume=/etc/homelab/repo/apps/homepage/config:/app/config:Z
 
 EnvironmentFile=/etc/homelab/apps/homepage.env
 

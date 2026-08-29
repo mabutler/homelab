@@ -29,6 +29,15 @@ source "$(dirname -- "${BASH_SOURCE[0]}")/lib/publish.sh"
 
 QUADLET_DIR=/etc/containers/systemd
 SECRETS_DIR=/etc/homelab/apps
+
+# A stable path to this repository, wherever it happens to be checked out.
+#
+# Quadlet units are static files with no variable substitution, so a unit that
+# needs to bind-mount something FROM the repository has to name an absolute
+# path. Hardcoding /opt/stack breaks the moment the checkout lives anywhere
+# else. This symlink is the indirection: units name /etc/homelab/repo/... and
+# deploy.sh points it at whatever REPO_ROOT actually is.
+REPO_LINK=/etc/homelab/repo
 APPS_DIR="$REPO_ROOT/apps"
 TMPFILES_SRC="$REPO_ROOT/system/tmpfiles"
 
@@ -283,6 +292,18 @@ main() {
     load_host_conf
 
     [[ -d "$QUADLET_DIR" ]] || die "$QUADLET_DIR does not exist — run bootstrap/70-podman.sh first"
+
+    # Converge the stable repo path before anything is linked or started, since
+    # units resolve it at container start.
+    run mkdir -p -- "$(dirname -- "$REPO_LINK")"
+    if [[ -L "$REPO_LINK" && "$(readlink -f -- "$REPO_LINK")" == "$REPO_ROOT" ]]; then
+        dbg "$REPO_LINK -> $REPO_ROOT"
+    elif [[ -e "$REPO_LINK" && ! -L "$REPO_LINK" ]]; then
+        die "$REPO_LINK exists and is not a symlink — move it aside"
+    else
+        log "link $REPO_LINK -> $REPO_ROOT"
+        run ln -sfn -- "$REPO_ROOT" "$REPO_LINK"
+    fi
 
     (( ${#want[@]} > 0 )) || mapfile -t want < <(list_apps)
     (( ${#want[@]} > 0 )) || die "no apps in $APPS_DIR"

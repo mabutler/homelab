@@ -467,6 +467,11 @@ restarts anything whose unit file changed. Boot-time startup needs no
 `systemctl enable` — Quadlet honours the `[Install]` section inside each
 `.container`. Use `--no-start` to link and reload without touching services.
 
+**`/etc/homelab/repo`** is a symlink to this checkout, maintained by
+`deploy.sh`. Quadlet units cannot substitute variables, so a unit that
+bind-mounts something out of the repository (Homepage's config) names that
+stable path rather than hardcoding one clone's location.
+
 **Secrets** live in `apps/<name>/<name>.env` — in the repo, gitignored, next to
 the unit that consumes them — and are symlinked into `/etc/homelab/apps/`, so
 every secret on this host is discoverable in one directory.
