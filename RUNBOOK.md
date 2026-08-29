@@ -4,8 +4,8 @@ Operating notes for the host this repository provisions. Written for whoever
 is reading it at 11pm with something broken, which may well be you having
 forgotten all of it.
 
-Current as of the completion of `bootstrap/`. Applications are not yet
-deployed; see [Not done yet](#not-done-yet).
+Current as of Phase 3: `bootstrap/` complete, Vaultwarden live and public via
+Funnel, Immich next. See [Not done yet](#not-done-yet).
 
 ---
 
@@ -77,6 +77,8 @@ cd /opt/stack && sudo ./tools/verify.sh
 
 Then look at:
 
+- `cd /opt/stack && sudo ./tools/check-image-pins.sh` — has upstream moved a
+  pinned image past us? See [Pinned images](#pinned-images).
 - `systemctl list-timers` — everything still scheduled?
 - `df -h /` and `df -h /mnt/pool` — fill levels
 - `journalctl -u podman-auto-update -n 50` — what has been updating itself
@@ -394,6 +396,50 @@ read-only proxy in front of it, never the socket itself.
 
 ---
 
+## Pinned images
+
+Most containers carry `AutoUpdate=registry` and are updated by the daily
+`podman-auto-update` timer. **Immich's database is pinned to an exact tag**, and
+the tag is doing real work:
+
+```
+ghcr.io/immich-app/postgres:14-vectorchord0.4.3-pgvectors0.2.0
+```
+
+It names the PostgreSQL major *and* both extension versions, so auto-update can
+only ever deliver a rebuild of that same combination — a patched 14.x with the
+same extensions, needing no migration. That is precisely what makes
+`AutoUpdate=registry` safe to leave on it.
+
+What the pin prevents is an update that **needs a step an image swap cannot
+perform**:
+
+- A **PostgreSQL major** bump changes the on-disk format. The new binary
+  refuses to start against the old data directory — it fails closed rather than
+  corrupting anything, but the service is down until you run `pg_upgrade` or a
+  dump/restore. Postgres does not downgrade.
+- A **VectorChord** bump needs SQL afterwards:
+  ```sql
+  ALTER EXTENSION vchord UPDATE;
+  REINDEX INDEX face_index;
+  REINDEX INDEX clip_index;
+  ```
+  Skip it and the database starts, serves, and has stale indexes — nothing
+  complains, which is the worst shape of failure.
+
+Immich supports PostgreSQL 14 through 19, so a pinned 14 will not be outrun by
+server updates for years. But a pin nobody watches is just a stale version, so:
+
+```bash
+sudo ./tools/check-image-pins.sh          # compares our pin to Immich's current release
+sudo ./tools/check-image-pins.sh --notify # ... and pushes if it has drifted
+```
+
+It changes nothing. When it reports drift, that is a deliberate maintenance
+task: read the release notes, snapshot, move the tag, run the migration.
+
+---
+
 ## Applications
 
 Deployed with `deploy.sh`, which **symlinks** unit files from `apps/<name>/`
@@ -425,9 +471,25 @@ and handles ownership, 0600 and the symlink itself once it exists.
 Those files are not in git and not recoverable from the vault they configure.
 **Keep copies in your password manager.**
 
-| App | State | Notes |
-|---|---|---|
-| Vaultwarden | `/opt/appdata/vaultwarden` | [apps/vaultwarden/README.md](apps/vaultwarden/README.md) |
+| App | Reachable at | State | Notes |
+|---|---|---|---|
+| Vaultwarden | `:443` (**public**, Funnel) | `/opt/appdata/vaultwarden` | [README](apps/vaultwarden/README.md) |
+| Immich | `:8444` tailnet only | `/opt/appdata/immich` + `/mnt/pool/photos` | [README](apps/immich/README.md) |
+
+Each app's state and how it must be captured for backup is recorded in
+[`docs/backup-inventory.md`](docs/backup-inventory.md) as it is deployed.
+
+**Vaultwarden stays on SQLite even though Immich brings a Postgres.** Sharing
+one would couple the password manager's availability to a photo app's database
+and its upgrade schedule — and Vaultwarden is what holds the credentials you
+need to fix everything else. Any future app needing Postgres gets its own
+instance for the same reason.
+
+**One app per port, and 443 is Vaultwarden's alone.** Funnel is enabled per
+port, not per path, so anything sharing a port with a funnelled app goes public
+with it. Tailscale only funnels 443, 8443 and 10000 — so every tailnet-only app
+here is given a port *outside* that set, and `lib/publish.sh` refuses a
+`serve.conf` that contradicts itself either way.
 
 ### Reachability is part of deploying
 
@@ -611,11 +673,18 @@ Recorded because each one cost real time and none of them are obvious.
 - **Backups.** Phase 4. Nothing is backed up off this machine. SnapRAID is
   not a backup — it protects against drive failure, not against deletion,
   corruption, fire or theft.
-- **Applications.** Phase 3, starting with Vaultwarden.
-- **Tailscale ACLs and `tag:server`.** Policy written and committed at
-  `apps/vaultwarden/tailnet-policy.hujson`, applied by `tools/enable-funnel.sh`
-  — but only once you paste the policy into the admin console. Until then the
-  tailnet runs the default allow-all, which is fine while nothing is public.
+  **What needs backing up, and how each thing must be captured, is being
+  written down as applications are deployed:**
+  [`docs/backup-inventory.md`](docs/backup-inventory.md). Phase 4 implements
+  that file rather than starting from a blank page. Add to it when you add an
+  app — the per-app "how" (SQLite `.backup`, `pg_dump`, plain copy) is easy to
+  know now and expensive to reconstruct later.
+- **Applications.** Phase 3. Vaultwarden is live; Immich is next.
+- **File Browser: dropped, deliberately.** It was archived 2026-09-01 with the
+  maintainer telling users to treat it as unmaintained. Ad-hoc file access is
+  SFTP over Tailscale SSH, which already exists and adds no attack surface. If
+  a Dropbox-style *sync* need appears later, that is Syncthing, not a web file
+  manager — see [Goodbye File Browser](https://hacdias.com/2026/07/28/filebrowser/).
 - **Read-only proxy for `podman.socket`.** Arrives with Homepage.
 - **Camera footage and SnapRAID.** Currently *inside* parity protection,
   reversing the original plan. Revisit when cameras are actually bought.

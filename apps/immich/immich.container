@@ -1,0 +1,53 @@
+# The main server. Named immich.container rather than immich-server.container
+# so `systemctl status immich` is the obvious thing and matches the app name.
+[Unit]
+Description=Immich — photo and video server
+Documentation=https://docs.immich.app
+
+# Both, and for different reasons: /opt/appdata holds the database this talks
+# to, /mnt/pool holds the photos. A pool that failed to mount must stop this
+# service rather than have it create an empty library on the SSD and start
+# accepting uploads into it.
+RequiresMountsFor=/opt/appdata /mnt/pool
+
+# Hard dependencies. Immich exits rather than waiting if Postgres is absent, so
+# systemd ordering is doing real work here, not decoration.
+Requires=immich-database.service immich-redis.service
+After=immich-database.service immich-redis.service
+
+# Machine learning is NOT listed. It lives in optional/ and is not deployed —
+# see optional/README.md. If you deploy it, add:
+#     Wants=immich-machine-learning.service
+#     After=immich-machine-learning.service
+# It is a Wants rather than a Requires either way: Immich reaches ML over the
+# network when it needs it, and must keep serving photos when it is absent.
+
+After=network-online.target
+Wants=network-online.target
+OnFailure=ntfy-alert@%n.service
+
+[Container]
+ContainerName=immich-server
+Image=ghcr.io/immich-app/immich-server:release
+Network=immich.network
+AutoUpdate=registry
+
+# Loopback only. `tailscale serve` is what makes this reachable, on a port
+# Funnel cannot use — see serve.conf.
+PublishPort=127.0.0.1:2283:2283
+
+# The library. On the pool, because this is the bulk data mergerfs exists for.
+Volume=/mnt/pool/photos:/data:Z
+
+# Read-only host time, as upstream does: EXIF handling wants the real zone.
+Volume=/etc/localtime:/etc/localtime:ro
+
+EnvironmentFile=/etc/homelab/apps/immich.env
+
+[Service]
+Restart=always
+# First start runs database migrations against an empty database.
+TimeoutStartSec=600
+
+[Install]
+WantedBy=multi-user.target default.target

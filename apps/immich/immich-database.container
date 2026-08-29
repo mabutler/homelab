@@ -1,0 +1,40 @@
+[Unit]
+Description=Immich — PostgreSQL with vector search
+Documentation=https://docs.immich.app/install/docker-compose
+
+# Postgres lives on ext4, NOT on the Btrfs root and NOT on the pool. Databases
+# perform badly under copy-on-write, and an OS snapshot rollback must never
+# rewind application state to a point the photo files no longer match.
+RequiresMountsFor=/opt/appdata
+OnFailure=ntfy-alert@%n.service
+
+[Container]
+ContainerName=immich-database
+# NOT stock postgres. Immich needs the vector extensions compiled in for
+# similarity search; the stock image starts and then fails on first query.
+#
+# THE TAG IS THE PIN. It names the Postgres major (14) AND both extension
+# versions, so `AutoUpdate=registry` below can only ever deliver a rebuild of
+# that exact combination — security patches and 14.x point releases. It cannot
+# hand you Postgres 15, and it cannot move an extension version underneath a
+# database that was initialised against the old one.
+#
+# Moving to a new major, or to newer extensions, means editing this line
+# deliberately, reading Immich's release notes, and taking a snapshot first.
+# Postgres does not downgrade: an accidental major bump is a restore, not an
+# undo. That is the whole reason the version lives in the tag.
+Image=ghcr.io/immich-app/postgres:14-vectorchord0.4.3-pgvectors0.2.0
+Network=immich.network
+AutoUpdate=registry
+
+Volume=/opt/appdata/immich/postgres:/var/lib/postgresql/data:Z
+
+Environment=POSTGRES_INITDB_ARGS=--data-checksums
+EnvironmentFile=/etc/homelab/apps/immich.env
+
+[Service]
+Restart=always
+TimeoutStartSec=300
+
+[Install]
+WantedBy=multi-user.target default.target

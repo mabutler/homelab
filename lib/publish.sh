@@ -13,9 +13,16 @@
 # on every deploy:
 #
 #     SERVE_TARGET=http://127.0.0.1:8222   what to forward to (required)
-#     SERVE_PATH=/                         mount point on 443 (default /)
+#     SERVE_PORT=443                       HTTPS port to serve on (default 443)
+#     SERVE_PATH=/                         mount point on that port (default /)
 #     FUNNEL=yes                           also expose it to the public internet
 #     FUNNEL_GUARD=funnel-guard.sh         veto script, relative to the app dir
+#
+# ONE APP PER PORT, and 443 belongs to Vaultwarden alone. Funnel is enabled per
+# PORT, not per path, so anything sharing a port with a funnelled app becomes
+# public with it. Tailscale only permits Funnel on 443, 8443 and 10000, so every
+# tailnet-only app here is given a port OUTSIDE that set — then no future
+# mistake can publish it, whatever anyone types.
 #
 # The file IS the declaration of intent, in the same sense drives.conf is: a
 # committed `FUNNEL=yes` is you saying this app is public, so nothing here asks
@@ -38,7 +45,10 @@ _HOMELAB_PUBLISH_SOURCED=1
 
 # Fixed key list, same convention as templating: a typo in serve.conf is a
 # variable nothing reads, so name them explicitly and clear them between apps.
-PUBLISH_KEYS=(SERVE_TARGET SERVE_PATH FUNNEL FUNNEL_GUARD)
+PUBLISH_KEYS=(SERVE_TARGET SERVE_PORT SERVE_PATH FUNNEL FUNNEL_GUARD)
+
+# Tailscale permits Funnel on these and nothing else.
+FUNNELABLE_PORTS=(443 8443 10000)
 
 # load_serve_conf <app-dir> — returns 1 when the app declares no publishing.
 load_serve_conf() {
@@ -51,8 +61,25 @@ load_serve_conf() {
 
     [[ -n "${SERVE_TARGET:-}" ]] || die "$conf: SERVE_TARGET is required"
     SERVE_PATH="${SERVE_PATH:-/}"
+    SERVE_PORT="${SERVE_PORT:-443}"
     FUNNEL="${FUNNEL:-no}"
     [[ -z "${FUNNEL_GUARD:-}" ]] || FUNNEL_GUARD="$dir/$FUNNEL_GUARD"
+
+    # Catch the contradiction in the file rather than at the moment it matters:
+    # a port Funnel cannot use, declared as funnelled, is a typo, and a
+    # tailnet-only app parked on a funnelable port is an accident waiting for
+    # someone to enable Funnel there.
+    local p funnelable=0
+    for p in "${FUNNELABLE_PORTS[@]}"; do
+        [[ "$SERVE_PORT" == "$p" ]] && funnelable=1
+    done
+    if [[ "${FUNNEL,,}" == yes ]] && (( ! funnelable )); then
+        die "$conf: FUNNEL=yes but SERVE_PORT=$SERVE_PORT — Tailscale only funnels ${FUNNELABLE_PORTS[*]}"
+    fi
+    if [[ "${FUNNEL,,}" != yes ]] && (( funnelable )); then
+        warn "$conf: tailnet-only but parked on $SERVE_PORT, which Funnel can use."
+        warn "Move it to a port outside ${FUNNELABLE_PORTS[*]} so it cannot be published by mistake."
+    fi
     return 0
 }
 
@@ -64,16 +91,22 @@ load_serve_conf() {
 #   .AllowFunnel["host:443"]               -> true when the port is public
 _serve_json() { tailscale serve status --json 2>/dev/null || echo '{}'; }
 
+# Keys in .Web and .AllowFunnel are "<magicdns-name>:<port>", so the port is
+# matched by suffix rather than assumed to be 443.
 serve_is_mounted() {
-    local path="$1" target="$2" found
-    found="$(_serve_json | jq -r --arg p "$path" \
-        '[.Web // {} | to_entries[] | .value.Handlers[$p].Proxy? // empty] | first // empty')"
+    local path="$1" target="$2" port="$3" found
+    found="$(_serve_json | jq -r --arg p "$path" --arg port ":$port" \
+        '[.Web // {} | to_entries[]
+          | select(.key | endswith($port))
+          | .value.Handlers[$p].Proxy? // empty] | first // empty')"
     [[ "$found" == "$target" ]]
 }
 
 funnel_is_on() {
-    local on
-    on="$(_serve_json | jq -r '[.AllowFunnel // {} | to_entries[] | .value] | any')"
+    local port="$1" on
+    on="$(_serve_json | jq -r --arg port ":$port" \
+        '[.AllowFunnel // {} | to_entries[]
+          | select(.key | endswith($port)) | .value] | any')"
     [[ "$on" == "true" ]]
 }
 
@@ -141,15 +174,13 @@ publish_app() {
 
     require_https_certs
 
-    if serve_is_mounted "$SERVE_PATH" "$SERVE_TARGET"; then
-        dbg "$app: already served at $SERVE_PATH"
+    if serve_is_mounted "$SERVE_PATH" "$SERVE_TARGET" "$SERVE_PORT"; then
+        dbg "$app: already served on $SERVE_PORT at $SERVE_PATH"
     else
-        log "$app: serving $SERVE_PATH -> $SERVE_TARGET on the tailnet"
-        if [[ "$SERVE_PATH" == "/" ]]; then
-            run tailscale serve --bg "$SERVE_TARGET"
-        else
-            run tailscale serve --bg --set-path="$SERVE_PATH" "$SERVE_TARGET"
-        fi
+        log "$app: serving :$SERVE_PORT$SERVE_PATH -> $SERVE_TARGET on the tailnet"
+        local -a serve_args=(--bg --https="$SERVE_PORT")
+        [[ "$SERVE_PATH" == "/" ]] || serve_args+=(--set-path="$SERVE_PATH")
+        run tailscale serve "${serve_args[@]}" "$SERVE_TARGET"
         # Read by the caller (deploy.sh), not here.
         # shellcheck disable=SC2034
         PUBLISH_CHANGED=1
@@ -158,8 +189,8 @@ publish_app() {
 
     [[ "${FUNNEL,,}" == yes ]] || return 0
 
-    if funnel_is_on; then
-        dbg "$app: funnel already on"
+    if funnel_is_on "$SERVE_PORT"; then
+        dbg "$app: funnel already on for $SERVE_PORT"
         return 0
     fi
 
@@ -182,10 +213,11 @@ publish_app() {
         fi
     fi
 
-    # Funnel accepts only 443, 8443 and 10000, and is enabled per PORT rather
-    # than per path: everything mounted on this port becomes public together.
-    log "$app: enabling Funnel — this port becomes reachable from the internet"
-    run tailscale funnel --bg "$SERVE_TARGET"
+    # Enabled per PORT, not per path: everything mounted on this port becomes
+    # public together. load_serve_conf has already refused a port Funnel cannot
+    # serve, so this cannot silently do nothing.
+    log "$app: enabling Funnel on $SERVE_PORT — reachable from the internet"
+    run tailscale funnel --bg --https="$SERVE_PORT" "$SERVE_TARGET"
     # shellcheck disable=SC2034
     PUBLISH_CHANGED=1
     ok "$app: published to the public internet"

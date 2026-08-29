@@ -46,6 +46,21 @@ list_apps() {
     done
 }
 
+# The systemd services an app resolves to. Quadlet names a generated service
+# after its file, so apps/immich/immich-database.container becomes
+# immich-database.service — an app is NOT one service named after its
+# directory, and Immich is four.
+#
+# Only .container generates a plain service worth starting and health-checking.
+# .network and .volume generate oneshot units that their containers pull in.
+app_services() {
+    local app="$1" f
+    for f in "$APPS_DIR/$app"/*.container; do
+        [[ -f "$f" ]] || continue
+        basename -- "$f" .container
+    done
+}
+
 # Every unit file an app directory contributes.
 app_units() {
     local app="$1" f ext
@@ -264,46 +279,62 @@ main() {
     printf '\n' >&2
     local failed=0
     for app in "${want[@]}"; do
-        local is_active=0 was_changed=0 a
-        systemctl is-active --quiet "$app.service" 2>/dev/null && is_active=1
+        local was_changed=0 env_changed=0 a svc
         for a in ${changed_apps[@]+"${changed_apps[@]}"}; do
             [[ "$a" == "$app" ]] && was_changed=1
         done
+        env_newer_than_service "$app" "$APPS_DIR/$app" && env_changed=1
 
-        local why=''
-        if (( was_changed )); then
-            why='its unit changed'
-        elif (( is_active )) && env_newer_than_service "$app" "$APPS_DIR/$app"; then
-            why='its environment file changed since it started'
-        fi
+        local -a services=()
+        mapfile -t services < <(app_services "$app")
+        (( ${#services[@]} > 0 )) || { warn "$app has no .container units"; continue; }
 
-        if (( is_active )) && [[ -z "$why" ]]; then
-            ok "$app already running, nothing changed"
-            continue
-        fi
+        # Start every service the app resolves to. Ordering is systemd's job —
+        # the units declare Requires=/After= between themselves — so asking for
+        # all of them in any order is correct, and asking for one that a
+        # dependency already started is a no-op.
+        for svc in "${services[@]}"; do
+            local is_active=0 why=''
+            systemctl is-active --quiet "$svc.service" 2>/dev/null && is_active=1
 
-        if (( is_active )); then
-            log "restarting $app — $why"
-            run systemctl restart "$app.service"
-        else
-            log "starting $app"
-            run systemctl start "$app.service"
-        fi
+            if (( was_changed )); then
+                why='its unit changed'
+            elif (( is_active && env_changed )); then
+                why='its environment file changed since it started'
+            fi
+
+            if (( is_active )) && [[ -z "$why" ]]; then
+                ok "$svc already running, nothing changed"
+                continue
+            fi
+
+            if (( is_active )); then
+                log "restarting $svc — $why"
+                run systemctl restart "$svc.service"
+            else
+                log "starting $svc"
+                run systemctl start "$svc.service"
+            fi
+        done
 
         [[ -n "$DRY_RUN" ]] && continue
 
-        # Give a container that is pulling an image a moment before judging it.
+        # Judge them all after starting them all: a database that is still
+        # doing first-run initialisation would otherwise be declared broken
+        # while the server waiting on it has not been asked to start yet.
         sleep 2
-        if systemctl is-active --quiet "$app.service"; then
-            ok "$app is running"
-        else
-            err "$app did not start"
-            systemctl status --no-pager --lines=15 "$app.service" >&2 || true
-            failed=$(( failed + 1 ))
-        fi
+        for svc in "${services[@]}"; do
+            if systemctl is-active --quiet "$svc.service"; then
+                ok "$svc is running"
+            else
+                err "$svc did not start"
+                systemctl status --no-pager --lines=15 "$svc.service" >&2 || true
+                failed=$(( failed + 1 ))
+            fi
+        done
     done
 
-    (( failed == 0 )) || die "$failed app(s) failed to start"
+    (( failed == 0 )) || die "$failed service(s) failed to start"
 
     # Reachability. Every app that declares a serve.conf gets its Tailscale
     # state converged to match it — after the service is confirmed up, because
@@ -320,7 +351,14 @@ main() {
 
     PUBLISH_CHANGED=0
     for app in "${want[@]}"; do
-        systemctl is-active --quiet "$app.service" 2>/dev/null || continue
+        # Publish only what is actually serving. For a multi-container app the
+        # serve target belongs to one of them; if any service is down the app
+        # is not ready to be reachable.
+        local all_up=1 svc
+        while read -r svc; do
+            systemctl is-active --quiet "$svc.service" 2>/dev/null || all_up=0
+        done < <(app_services "$app")
+        (( all_up )) || { dbg "$app not fully up, not publishing"; continue; }
         publish_app "$app" "$APPS_DIR/$app"
     done
     (( PUBLISH_CHANGED )) || dbg "publishing already converged"

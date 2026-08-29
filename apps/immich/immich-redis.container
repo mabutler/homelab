@@ -1,0 +1,23 @@
+[Unit]
+Description=Immich — Valkey job queue
+Documentation=https://docs.immich.app/install/docker-compose
+OnFailure=ntfy-alert@%n.service
+
+[Container]
+ContainerName=immich-redis
+# Valkey, not Redis — Immich moved after Redis changed licence. It speaks the
+# same protocol; the hostname stays "redis" because that is what the server
+# expects unless told otherwise.
+Image=docker.io/valkey/valkey:9
+Network=immich.network
+NetworkAlias=redis
+
+# Deliberately no volume. This is a job queue and a cache; losing it costs a
+# re-scan, not data. Persisting it would only preserve stale jobs across a
+# restart.
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=multi-user.target default.target

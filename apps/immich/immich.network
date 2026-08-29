@@ -1,0 +1,12 @@
+# A private network so the four containers can resolve each other by name.
+#
+# Quadlet generates immich-network.service from this and every .container that
+# names it pulls it in, so there is no ordering to manage by hand.
+#
+# Nothing here is published. The only listener that reaches the host is the
+# server's PublishPort, on loopback.
+[Unit]
+Description=Immich internal network
+
+[Network]
+NetworkName=immich
