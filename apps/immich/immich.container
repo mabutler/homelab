@@ -49,5 +49,19 @@ Restart=always
 # First start runs database migrations against an empty database.
 TimeoutStartSec=600
 
+# Podman does NOT create a bind-mount source that does not exist — it fails
+# with `statfs /mnt/pool/photos: no such file or directory`. So the library
+# directory has to be made, and the only safe moment is here: RequiresMountsFor
+# above guarantees /mnt/pool is mounted before this unit starts, so the mkdir
+# lands on the pool rather than on the root filesystem.
+#
+# This deliberately is NOT a tmpfiles.d entry. tmpfiles runs early in boot,
+# before the pool is up, and would create /mnt/pool/photos on the SSD — the
+# exact silent failure the mountpoint lockdown exists to prevent.
+#
+# The mountpoint test is belt and braces: if RequiresMountsFor were ever
+# loosened, this still refuses rather than quietly writing to the wrong disk.
+ExecStartPre=/usr/bin/bash -c 'mountpoint -q /mnt/pool || { echo "/mnt/pool is not mounted — refusing to create the library on the root filesystem" >&2; exit 1; }; mkdir -p /mnt/pool/photos'
+
 [Install]
 WantedBy=multi-user.target default.target

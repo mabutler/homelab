@@ -11,7 +11,8 @@
 # Units are SYMLINKED from apps/<name>/ into /etc/containers/systemd/, not
 # copied. `git pull` then `systemctl restart <app>` is therefore the whole
 # update path, and there is never a deployed copy that has drifted from the
-# repository.
+# repository. Links for units an app no longer contains are pruned, so removing
+# a component from the repository actually removes it from the machine.
 #
 # Deploying an app means: its state directories exist, its secrets are in place
 # with the right mode, its unit is linked and started, and it is REACHABLE.
@@ -170,6 +171,52 @@ env_newer_than_service() {
     return 1
 }
 
+# Units this app deployed that it no longer contains.
+#
+# deploy.sh LINKS units; until now it never unlinked one that went away. Move a
+# unit out of an app directory (into optional/, say) and the symlink stayed in
+# /etc/containers/systemd/, so Quadlet kept generating the service and systemd
+# kept starting it. The repository said the component was gone and the machine
+# disagreed — which is the one thing this whole arrangement exists to prevent.
+#
+# Only links pointing INTO this app's directory are considered, so nothing
+# deployed by hand or by another app is ever touched.
+prune_orphans() {
+    local app="$1" link target base svc keep f
+    local -a current=()
+    mapfile -t current < <(app_units "$app")
+
+    for link in "$QUADLET_DIR"/*; do
+        [[ -L "$link" ]] || continue
+        target="$(readlink -- "$link")"
+        [[ "$target" == "$APPS_DIR/$app/"* ]] || continue
+
+        keep=0
+        for f in ${current[@]+"${current[@]}"}; do
+            [[ "$target" == "$f" ]] && keep=1
+        done
+        (( keep )) && continue
+
+        base="$(basename -- "$link")"
+        log "pruning $base — no longer part of $app"
+
+        # A generated service that is still running has to be stopped before
+        # its unit disappears, or systemd loses track of a live container.
+        # Only .container files generate a service named after themselves.
+        if [[ "$base" == *.container ]]; then
+            svc="${base%.container}"
+            if systemctl is-active --quiet "$svc.service" 2>/dev/null; then
+                warn "stopping $svc — its unit was removed from $app"
+                run systemctl stop "$svc.service"
+            fi
+        fi
+
+        run rm -f -- "$link"
+        DEPLOY_CHANGED=1
+        APP_CHANGED=1
+    done
+}
+
 remove_app() {
     local app="$1" f target
     while read -r f; do
@@ -253,6 +300,7 @@ main() {
             remove_app "$app"
         else
             deploy_app "$app"
+            prune_orphans "$app"
             (( APP_CHANGED )) && changed_apps+=("$app")
         fi
     done

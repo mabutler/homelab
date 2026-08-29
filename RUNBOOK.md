@@ -618,6 +618,18 @@ Recorded because each one cost real time and none of them are obvious.
   re-authentication rather than a preference change. `tailscale up
   --advertise-tags=... --force-reauth` also works but wants every other pref
   restated to avoid resetting them.
+- **Podman will not create a bind-mount source directory.** It fails with
+  `statfs <path>: no such file or directory` rather than doing what `docker run`
+  trained you to expect. For a path on the pool the directory cannot come from
+  tmpfiles.d either — that runs before the pool is mounted and would create it
+  on the SSD — so it is an `ExecStartPre` in the unit, after
+  `RequiresMountsFor` has guaranteed the mount.
+- **Removing a unit from an app used to leave it running.** `deploy.sh` linked
+  units but never unlinked one that went away, so moving a component out of an
+  app directory left the symlink, and Quadlet kept generating and starting the
+  service. The repository said gone, the machine said running. It now prunes
+  links pointing into an app directory that no longer match a file there, and
+  stops the service first.
 - **`podman ps` without sudo shows nothing, and that is not an error.** Rootless
   and rootful Podman have separate stores. Your user's store is empty; the
   services live in root's. Every `podman` command in this runbook needs `sudo`.
