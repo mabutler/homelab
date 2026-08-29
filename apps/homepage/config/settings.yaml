@@ -1,0 +1,19 @@
+title: fidelacchius
+description: home server
+
+# Groups render in this order regardless of the order services.yaml happens to
+# be in, so adding a service later cannot reshuffle the page.
+layout:
+  Essential:
+    style: row
+    columns: 2
+  Home:
+    style: row
+    columns: 3
+  System:
+    style: row
+    columns: 2
+
+headerStyle: clean
+statusStyle: dot
+hideVersion: true

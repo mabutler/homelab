@@ -1,0 +1,5 @@
+# The only "docker" endpoint is the read-only proxy — never the socket itself.
+# `homepage-socket-proxy` resolves on the homepage network.
+podman:
+  host: homepage-socket-proxy
+  port: 2375

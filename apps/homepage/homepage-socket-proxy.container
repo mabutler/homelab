@@ -1,0 +1,57 @@
+[Unit]
+Description=Homepage — read-only proxy in front of the Podman socket
+Documentation=https://github.com/Tecnativa/docker-socket-proxy
+OnFailure=ntfy-alert@%n.service
+
+# The socket has to exist before anything can proxy it.
+Requires=podman.socket
+After=podman.socket
+
+[Container]
+ContainerName=homepage-socket-proxy
+Image=docker.io/tecnativa/docker-socket-proxy:latest
+AutoUpdate=registry
+Network=homepage.network
+
+# WHY THIS CONTAINER EXISTS
+#
+# Handing a dashboard the raw Podman socket is handing it root on this host:
+# that API can create a container, bind-mount / into it, and run anything.
+# "Read-only" on the bind mount does not help — it makes the socket FILE
+# read-only, not the API, and the API's dangerous verbs are all POSTs that a
+# read-only mount does nothing to stop.
+#
+# So Homepage never sees the socket. It talks to this, which is an HAProxy
+# whitelist that answers exactly the endpoints below and 403s everything else.
+Volume=/run/podman/podman.sock:/var/run/docker.sock
+
+# Everything defaults to off in this image; these are the only allowances.
+# CONTAINERS is what Homepage needs for name, state and stats.
+Environment=CONTAINERS=1
+Environment=POST=0
+Environment=BUILD=0
+Environment=COMMIT=0
+Environment=CONFIGS=0
+Environment=EXEC=0
+Environment=IMAGES=0
+Environment=INFO=0
+Environment=NETWORKS=0
+Environment=NODES=0
+Environment=PLUGINS=0
+Environment=SECRETS=0
+Environment=SERVICES=0
+Environment=SESSION=0
+Environment=SWARM=0
+Environment=SYSTEM=0
+Environment=TASKS=0
+Environment=VOLUMES=0
+
+# Not published to the host at all. Only reachable on the homepage network.
+
+NoNewPrivileges=true
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=multi-user.target default.target

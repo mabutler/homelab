@@ -5,7 +5,7 @@ is reading it at 11pm with something broken, which may well be you having
 forgotten all of it.
 
 Current as of Phase 3: `bootstrap/` complete; Vaultwarden live and public via
-Funnel; Immich, Mealie, Vikunja and Memos on the tailnet. See
+Funnel; Immich, Mealie, Vikunja, Memos and Homepage on the tailnet. See
 [Not done yet](#not-done-yet).
 
 ---
@@ -391,9 +391,15 @@ fails to come up.
 Images are pruned weekly (Sundays 06:00) — every update leaves the old image
 behind and they would fill the root filesystem over months.
 
-`podman.socket` is enabled but **nothing consumes it yet**. Access to that
-socket is equivalent to root on this host; when Homepage arrives it gets a
-read-only proxy in front of it, never the socket itself.
+`podman.socket` is enabled, and **exactly one thing consumes it**: the
+whitelisting proxy that Homepage reads through.
+
+Access to that socket is equivalent to root on this host — the API can create a
+container, bind-mount `/` into it and run anything. Mounting it `:ro` does not
+help: read-only applies to the socket *file*, while every dangerous verb in the
+API is a POST. So no container gets the socket. `homepage-socket-proxy` allows
+`CONTAINERS=1` and 403s everything else, and is not published to the host at
+all — it exists only on the `homepage` network.
 
 ---
 
@@ -479,6 +485,7 @@ Those files are not in git and not recoverable from the vault they configure.
 | Mealie | `:8445` tailnet only | `/opt/appdata/mealie` | [README](apps/mealie/README.md) |
 | Vikunja | `:8446` tailnet only | `/opt/appdata/vikunja` | [README](apps/vikunja/README.md) |
 | Memos | `:8447` tailnet only | `/opt/appdata/memos` | [README](apps/memos/README.md) |
+| Homepage | `:8448` tailnet only | `apps/homepage/config/` — in git | [README](apps/homepage/README.md) |
 
 Each app's state and how it must be captured for backup is recorded in
 [`docs/backup-inventory.md`](docs/backup-inventory.md) as it is deployed.
@@ -488,6 +495,8 @@ one would couple the password manager's availability to a photo app's database
 and its upgrade schedule — and Vaultwarden is what holds the credentials you
 need to fix everything else. Any future app needing Postgres gets its own
 instance for the same reason.
+
+Start at Homepage — `:8448` links to all of them and shows what is running.
 
 **One app per port, and 443 is Vaultwarden's alone.** Funnel is enabled per
 port, not per path, so anything sharing a port with a funnelled app goes public
@@ -705,16 +714,15 @@ Recorded because each one cost real time and none of them are obvious.
   that file rather than starting from a blank page. Add to it when you add an
   app — the per-app "how" (SQLite `.backup`, `pg_dump`, plain copy) is easy to
   know now and expensive to reconstruct later.
-- **Applications.** Phase 3. Vaultwarden, Immich, Mealie, Vikunja and Memos
-  are deployed. Still to come: Home Assistant and Z-Wave JS UI (3d), the
-  Homepage dashboard with a read-only `podman.socket` proxy, and Frigate
-  (deferred to Stage 2, with the cameras).
+- **Applications.** Phase 3. Vaultwarden, Immich, Mealie, Vikunja, Memos and
+  Homepage are deployed. Still to come: Home Assistant and Z-Wave JS UI (3d),
+  the
+  Frigate (deferred to Stage 2, with the cameras).
 - **File Browser: dropped, deliberately.** It was archived 2026-09-01 with the
   maintainer telling users to treat it as unmaintained. Ad-hoc file access is
   SFTP over Tailscale SSH, which already exists and adds no attack surface. If
   a Dropbox-style *sync* need appears later, that is Syncthing, not a web file
   manager — see [Goodbye File Browser](https://hacdias.com/2026/07/28/filebrowser/).
-- **Read-only proxy for `podman.socket`.** Arrives with Homepage.
 - **Camera footage and SnapRAID.** Currently *inside* parity protection,
   reversing the original plan. Revisit when cameras are actually bought.
 - **`Z4Z972VW`.** Watching. See [Drive health](#drive-health).

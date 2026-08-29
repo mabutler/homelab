@@ -1,0 +1,56 @@
+# The dashboard. Edited in the repository, not in a UI — `git pull` on the
+# server is how the page changes, and a rebuilt host comes back with its
+# services already on it.
+#
+# `container:` + `server: podman` is what draws the running/stopped dot. It
+# reads through the socket proxy, which can see container state and nothing
+# else.
+#
+# HREFS ARE THE TAILNET NAME AND PORT, not localhost: these links are followed
+# by your browser, on your laptop, which has no 127.0.0.1:8222.
+
+- Essential:
+    - Vaultwarden:
+        icon: bitwarden.png
+        href: https://fidelacchius.fable-mackarel.ts.net
+        description: passwords — the only public service
+        server: podman
+        container: vaultwarden
+    - Immich:
+        icon: immich.png
+        href: https://fidelacchius.fable-mackarel.ts.net:8444
+        description: photos and video
+        server: podman
+        container: immich-server
+
+- Home:
+    - Mealie:
+        icon: mealie.png
+        href: https://fidelacchius.fable-mackarel.ts.net:8445
+        description: recipes and meal planning
+        server: podman
+        container: mealie
+    - Vikunja:
+        icon: vikunja.png
+        href: https://fidelacchius.fable-mackarel.ts.net:8446
+        description: tasks and lists
+        server: podman
+        container: vikunja
+    - Memos:
+        icon: memos.png
+        href: https://fidelacchius.fable-mackarel.ts.net:8447
+        description: quick notes
+        server: podman
+        container: memos
+
+- System:
+    - Immich database:
+        icon: postgres.png
+        description: postgres — pinned, see check-image-pins.sh
+        server: podman
+        container: immich-database
+    - Immich queue:
+        icon: redis.png
+        description: valkey
+        server: podman
+        container: immich-redis

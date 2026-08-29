@@ -121,10 +121,14 @@ cat >&2 <<EOF
     io.containers.autoupdate=registry
         or it never updates — and the tag it tracks IS the update policy
 
-  Deliberately not configured here: a read-only proxy in front of
-  podman.socket. Nothing consumes the socket yet, and it arrives with
-  Homepage. Access to that socket is root on this host, so no container
-  gets it directly.
+  podman.socket is enabled above. Nothing on this host may consume it
+  directly: access to that socket is root on this machine, and a
+  read-only bind mount does not change that — it makes the socket FILE
+  read-only while every dangerous verb in the API is a POST.
+
+  The one consumer is Homepage, and it reaches the socket through a
+  whitelisting proxy that answers container state and 403s the rest.
+  See apps/homepage/homepage-socket-proxy.container.
 EOF
 
 ok "Podman platform ready"

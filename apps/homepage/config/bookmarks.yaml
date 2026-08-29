@@ -1,0 +1,18 @@
+- Admin:
+    - Tailscale:
+        - abbr: TS
+          href: https://login.tailscale.com/admin/machines
+    - Healthchecks:
+        - abbr: HC
+          href: https://healthchecks.io/
+    - Backblaze:
+        - abbr: B2
+          href: https://secure.backblaze.com/
+
+- Reference:
+    - Arch news:
+        - abbr: AN
+          href: https://archlinux.org/news/
+    - Immich releases:
+        - abbr: IM
+          href: https://github.com/immich-app/immich/releases

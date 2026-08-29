@@ -1,0 +1,40 @@
+[Unit]
+Description=Homepage — the dashboard
+Documentation=https://gethomepage.dev
+
+RequiresMountsFor=/opt/stack
+After=network-online.target
+Wants=network-online.target
+
+Wants=homepage-socket-proxy.service
+After=homepage-socket-proxy.service
+
+OnFailure=ntfy-alert@%n.service
+
+[Container]
+ContainerName=homepage
+Image=ghcr.io/gethomepage/homepage:latest
+AutoUpdate=registry
+Network=homepage.network
+
+PublishPort=127.0.0.1:3000:3000
+
+# The dashboard's contents are CONFIGURATION, not state — so they live in the
+# repository, in git, and are edited there like everything else. A dashboard
+# rebuilt from scratch comes back with your services on it.
+#
+# Not read-only: Homepage writes into this directory on first start if a file
+# is missing. Everything it would generate is shipped, so in practice it does
+# not write, but refusing it the ability turns a missing file into a crash.
+Volume=/opt/stack/apps/homepage/config:/app/config:Z
+
+EnvironmentFile=/etc/homelab/apps/homepage.env
+
+NoNewPrivileges=true
+
+[Service]
+Restart=always
+TimeoutStartSec=300
+
+[Install]
+WantedBy=multi-user.target default.target

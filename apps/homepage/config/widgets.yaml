@@ -1,0 +1,14 @@
+# Resources are read from the container's view, so the paths mounted into it
+# are what get reported. Disk lines below cover the two that actually fill up
+# and the one whose filling is a silent disaster.
+- resources:
+    cpu: true
+    memory: true
+    disk:
+      - /
+      - /opt/appdata
+      - /mnt/pool
+
+- search:
+    provider: duckduckgo
+    target: _blank

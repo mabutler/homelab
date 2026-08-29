@@ -1,0 +1,7 @@
+# A private network so Homepage can reach the socket proxy by name, and nothing
+# else on the host can reach the proxy at all.
+[Unit]
+Description=Homepage internal network
+
+[Network]
+NetworkName=homepage
