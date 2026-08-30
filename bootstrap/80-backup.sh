@@ -51,9 +51,9 @@ chmod 0600 -- "$env_tmp"
     printf 'RESTIC_KEEP_DAILY=%q\n'   "${RESTIC_KEEP_DAILY:-7}"
     printf 'RESTIC_KEEP_WEEKLY=%q\n'  "${RESTIC_KEEP_WEEKLY:-5}"
     printf 'RESTIC_KEEP_MONTHLY=%q\n' "${RESTIC_KEEP_MONTHLY:-12}"
-    # The dump needs to log in as whatever immich.env configured.
-    printf 'IMMICH_DB_USER=%q\n' "${IMMICH_DB_USER:-postgres}"
-    printf 'IMMICH_DB_NAME=%q\n' "${IMMICH_DB_NAME:-immich}"
+    # Immich's database credentials are NOT copied here. They live in
+    # apps/immich/immich.env, which is where they are defined; homelab-backup
+    # reads them from there. The same fact in two files is a fact that drifts.
 } > "$env_tmp"
 
 if [[ -f "$ENV_FILE" ]] && cmp -s -- "$env_tmp" "$ENV_FILE"; then

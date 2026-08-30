@@ -123,12 +123,46 @@ sqlite_dump memos       "$APPDATA/memos/memos_prod.db"
 
 # Immich's PostgreSQL, from inside the running container — that is where the
 # client and server versions are guaranteed to match.
+#
+# The credentials come from immich.env, which is where they are actually
+# defined. Copying them into host.conf as well would be the same fact in two
+# files, and the copy would be the one that goes stale — you would change the
+# database password, Immich would keep working, and the backup would start
+# failing at 02:30 for a reason nobody is awake to read.
+IMMICH_ENV=/etc/homelab/apps/immich.env
+
+# One key out of a KEY=VALUE file, without sourcing it — sourcing would drag
+# every unrelated variable in the file into this script's environment.
+env_value() {
+    local file="$1" key="$2" line
+    [[ -r "$file" ]] || return 0
+    line="$(grep -m1 -E "^[[:space:]]*${key}[[:space:]]*=" "$file" 2>/dev/null || true)"
+    line="${line#*=}"
+    line="${line%\"}"; line="${line#\"}"
+    printf '%s' "${line%$'\r'}"
+}
+
 if [[ "$(podman container inspect -f '{{.State.Running}}' immich-database 2>/dev/null || true)" == "true" ]]; then
-    log "dumping immich postgres"
-    podman exec immich-database \
-        pg_dump -U "${IMMICH_DB_USER:-postgres}" --clean --if-exists "${IMMICH_DB_NAME:-immich}" \
-        > "$STAGING/db/immich.sql.dump" \
-        || die "pg_dump of immich failed"
+    db_user="$(env_value "$IMMICH_ENV" DB_USERNAME)";      db_user="${db_user:-postgres}"
+    db_name="$(env_value "$IMMICH_ENV" DB_DATABASE_NAME)"; db_name="${db_name:-immich}"
+    db_pass="$(env_value "$IMMICH_ENV" DB_PASSWORD)"
+
+    log "dumping immich postgres (user=$db_user db=$db_name)"
+
+    # PGPASSWORD is passed into the exec rather than set here, so it never
+    # appears in this script's environment or in `ps`.
+    if ! podman exec -e "PGPASSWORD=$db_pass" immich-database \
+        pg_dump -U "$db_user" --clean --if-exists "$db_name" \
+        > "$STAGING/db/immich.sql.dump" 2>"$STAGING/pg_dump.err"
+    then
+        printf 'pg_dump said:\n' >&2
+        cat -- "$STAGING/pg_dump.err" >&2 || true
+        die "pg_dump of immich failed — its full error is above.
+Check that DB_USERNAME, DB_PASSWORD and DB_DATABASE_NAME in $IMMICH_ENV
+still match what the database was initialised with. POSTGRES_* is read
+only on first start, so changing it later does not change the database."
+    fi
+    rm -f -- "$STAGING/pg_dump.err"
     [[ -s "$STAGING/db/immich.sql.dump" ]] || die "the immich dump is empty"
     gzip -- "$STAGING/db/immich.sql.dump"
 else
