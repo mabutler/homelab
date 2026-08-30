@@ -761,6 +761,16 @@ Recorded because each one cost real time and none of them are obvious.
   `SIGNUPS_ALLOWED` meant an open registration page on a vault believed closed.
   `deploy.sh` now restarts when the env file is newer than the service's
   `ActiveEnterTimestamp`.
+- **A precondition that discards the error it is checking for is worse than no
+  precondition.** `homelab-backup` ran `restic snapshots >/dev/null 2>&1` and
+  reported a flat "cannot reach the repository" while the repository existed
+  and worked by hand. The reason was thrown away with the stderr. It now prints
+  restic's own complaint before dying.
+- **A systemd service inherits almost no environment.** No `HOME` for a service
+  with no `User=`, so anything that wants a cache or config directory has to be
+  told where. Both backup units set `RESTIC_CACHE_DIR` explicitly and let
+  `CacheDirectory=` create it — "works in my shell, fails as a unit" is nearly
+  always this.
 - **A guard that reads a config file is checking a claim, not a fact.** The
   funnel guard read `vaultwarden.env`, which said `SIGNUPS_ALLOWED=false` while
   the running container had `true` — it would have published an open

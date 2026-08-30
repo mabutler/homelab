@@ -3,9 +3,16 @@ Description=Verify the restic repository
 Documentation=file:///etc/homelab/repo/docs/backup-inventory.md
 OnFailure=ntfy-alert@%n.service
 
+After=network-online.target
+Wants=network-online.target
+
 [Service]
 Type=oneshot
 ExecStart=/usr/local/bin/homelab-backup --check
+
+CacheDirectory=restic
+Environment=RESTIC_CACHE_DIR=/var/cache/restic
+Environment=HOME=/root
 TimeoutStartSec=6h
 Nice=19
 IOSchedulingClass=idle

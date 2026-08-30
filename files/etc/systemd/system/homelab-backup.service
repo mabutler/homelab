@@ -7,9 +7,24 @@ OnFailure=ntfy-alert@%n.service
 # here means systemd does not even start the job on a degraded boot.
 RequiresMountsFor=/mnt/pool /opt/appdata
 
+# B2 is on the internet. Persistent=true means this can fire moments after boot,
+# before the network is actually usable.
+After=network-online.target
+Wants=network-online.target
+
 [Service]
 Type=oneshot
 ExecStart=/usr/local/bin/homelab-backup
+
+# A systemd service inherits almost no environment, and restic wants somewhere
+# to keep its cache — without which it re-downloads index data on every run, or
+# fails outright depending on version. HOME is not set for a service with no
+# User=, so name the cache directory explicitly rather than relying on it.
+#
+# CacheDirectory= makes systemd create and own /var/cache/restic.
+CacheDirectory=restic
+Environment=RESTIC_CACHE_DIR=/var/cache/restic
+Environment=HOME=/root
 
 # THE FIRST RUN IS THE BIG ONE: it uploads the entire photo library, and on a
 # domestic upstream that is measured in nights, not hours. restic re-uses what

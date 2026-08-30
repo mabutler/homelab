@@ -78,8 +78,17 @@ if ! mountpoint -q /mnt/pool; then
     die "/mnt/pool is not mounted — refusing to back up an empty pool over good snapshots"
 fi
 
-restic snapshots >/dev/null 2>&1 \
-    || die "cannot reach the repository. Check $ENV_FILE, or initialise it: restic init"
+# Show restic's actual complaint. Discarding it here cost an hour once: the
+# repository existed and was reachable by hand, while the service reported a
+# flat "cannot reach the repository" with no reason attached. A precondition
+# that hides the error it is checking for is worse than no precondition.
+if ! repo_err="$(restic snapshots 2>&1 >/dev/null)"; then
+    [[ -n "$repo_err" ]] && printf '%s\n' "$repo_err" >&2
+    die "cannot reach the repository (restic's own error is above).
+Check $ENV_FILE, or initialise it once by hand:
+  set -a; . $ENV_FILE; set +a
+  restic init"
+fi
 
 # ---------------------------------------------------------------------------
 # Dump every database
