@@ -39,7 +39,7 @@ lost by waiting until you know how the rest behaves on this hardware.
 | What | Where | Why |
 |---|---|---|
 | Photos and video | `/mnt/pool/photos` | Bulk data. This is what the pool is for. Created by an `ExecStartPre` in the unit, which refuses if the pool is not mounted — podman will not create a bind-mount source, and tmpfiles.d would make it on the SSD before the pool is up. |
-| PostgreSQL | `/opt/appdata/immich/postgres` | ext4. Databases behave badly on Btrfs CoW, and app state must not be rewound by an OS snapshot rollback. |
+| PostgreSQL | `/opt/appdata/immich/postgres` | ext4. Databases behave badly on Btrfs CoW, and app state must not be rewound by an OS snapshot rollback. **Owned by Postgres, not by us** — created by `mkdir` in the unit and deliberately absent from `system/tmpfiles/`, which would re-assert root ownership on every boot. |
 | ML model cache | `/opt/appdata/immich/model-cache` | Created but unused until ML is deployed; a few hundred MB re-downloaded on every restart otherwise. |
 
 The database and the photos are **two halves of one thing** — the database

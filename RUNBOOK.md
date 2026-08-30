@@ -729,6 +729,15 @@ Recorded because each one cost real time and none of them are obvious.
   re-authentication rather than a preference change. `tailscale up
   --advertise-tags=... --force-reauth` also works but wants every other pref
   restated to avoid resetting them.
+- **tmpfiles.d must not manage a directory a container owns.** A `d` line
+  re-applies mode and ownership on every `systemd-tmpfiles --create` — at boot
+  and whenever `deploy.sh` touches a tmpfiles file. Postgres chowns its data
+  directory to itself on first start, so a root-owned line took it back after
+  it was already working. The running postmaster kept serving from open file
+  descriptors, so Immich looked fine, while every new backend died with
+  `FATAL: could not open file "global/pg_filenode.map": Permission denied` —
+  discovered weeks later by a backup at 02:30. Directories a container takes
+  ownership of are created by `mkdir` in an `ExecStartPre` and never chowned.
 - **A container that dropped privileges cannot write a root-owned volume.**
   State directories are owned to match the uid the image runs as, per app, in
   `system/tmpfiles/`. Vikunja (uid 1000, no `PUID` support) failed this way and

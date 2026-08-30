@@ -36,5 +36,12 @@ EnvironmentFile=/etc/homelab/apps/immich.env
 Restart=always
 TimeoutStartSec=300
 
+# mkdir ONLY — never chown. The Postgres entrypoint takes ownership of its data
+# directory on first start and must keep it; anything that re-asserts ownership
+# afterwards breaks new backends while the running server carries on, which is
+# the worst way to find out. This is why the path is deliberately absent from
+# system/tmpfiles/.
+ExecStartPre=/usr/bin/mkdir -p /opt/appdata/immich/postgres
+
 [Install]
 WantedBy=multi-user.target default.target
