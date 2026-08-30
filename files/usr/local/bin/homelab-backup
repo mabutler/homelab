@@ -38,6 +38,12 @@ source "$ENV_FILE"
 export RESTIC_REPOSITORY RESTIC_PASSWORD
 export B2_ACCOUNT_ID="${B2_ACCOUNT_ID:-}" B2_ACCOUNT_KEY="${B2_ACCOUNT_KEY:-}"
 
+# Bandwidth. Empty means unlimited, which on a domestic connection means restic
+# saturates the upstream and everyone else in the house loses the internet for
+# the duration. The first run especially — it uploads the entire photo library.
+declare -a limit=()
+[[ -n "${RESTIC_LIMIT_UPLOAD:-}" ]] && limit=(--limit-upload "$RESTIC_LIMIT_UPLOAD")
+
 KEEP_DAILY="${RESTIC_KEEP_DAILY:-7}"
 KEEP_WEEKLY="${RESTIC_KEEP_WEEKLY:-5}"
 KEEP_MONTHLY="${RESTIC_KEEP_MONTHLY:-12}"
@@ -159,6 +165,7 @@ copy_real /etc/homelab/backup.env   backup.env
 # match *.sqlite3 and *.db, which is why the dumps end in .dump.
 log "backing up"
 restic backup \
+    ${limit[@]+"${limit[@]}"} \
     --tag homelab \
     --exclude-caches \
     --exclude '*.sqlite3' --exclude '*.sqlite3-wal' --exclude '*.sqlite3-shm' \

@@ -11,9 +11,15 @@ RequiresMountsFor=/mnt/pool /opt/appdata
 Type=oneshot
 ExecStart=/usr/local/bin/homelab-backup
 
-# A backup that has not finished in four hours has gone wrong. Without this it
-# would still be running when the next one fires.
-TimeoutStartSec=4h
+# THE FIRST RUN IS THE BIG ONE: it uploads the entire photo library, and on a
+# domestic upstream that is measured in nights, not hours. restic re-uses what
+# is already in the repository, so a run killed by this timeout is not wasted —
+# the next one continues from where the data ends.
+#
+# 12h bounds a genuinely wedged job without failing an honest large upload.
+# systemd will not start a second instance while one is running, so a long job
+# simply skips the next night rather than overlapping.
+TimeoutStartSec=12h
 
 # Backups are background work: never at the expense of the services people are
 # actually using. IOSchedulingClass=idle matters most — restic reading the

@@ -618,6 +618,26 @@ pointers. So `host.conf` and every app `.env` are copied into the staging
 directory as real files first. Those are the files that make a restored machine
 *this* machine — they are gitignored, so nothing else carries them.
 
+### The first run is the big one
+
+It uploads the entire photo library. On a domestic upstream that is measured in
+nights, not hours — and while it runs, an uncapped restic will saturate the
+connection and take the rest of the house's internet with it.
+
+Set `RESTIC_LIMIT_UPLOAD` in `host.conf` (KiB/s; roughly 60% of measured
+upstream, so 1250 is about 10 Mbit/s) and re-run `./run.sh --only 80`.
+
+A run killed by the 12-hour timeout is **not wasted**: restic re-uses whatever
+already reached the repository, so the next night continues from where the data
+ends. systemd will not start a second instance while one is running, so a long
+job skips the next night rather than overlapping. Expect the first few nights to
+fail on timeout and the alerts to stop once it catches up.
+
+```bash
+restic stats latest              # what is actually up there
+restic snapshots                 # and when
+```
+
 ### Retention and cost
 
 7 daily, 5 weekly, 12 monthly. `forget` runs every night; `prune` only on

@@ -80,6 +80,14 @@ RESTIC_PASSWORD=""
 B2_ACCOUNT_ID=""                # the applicationKeyId
 B2_ACCOUNT_KEY=""               # the applicationKey
 
+# Upload bandwidth cap, KiB/s. Empty means unlimited — which on a domestic
+# connection means restic saturates the upstream and everyone in the house
+# loses the internet while it runs. The first backup uploads the entire photo
+# library, so this matters most exactly when you notice it least.
+#
+# Rule of thumb: about 60% of measured upstream. 1250 is ~10 Mbit/s.
+RESTIC_LIMIT_UPLOAD=""          # e.g. 1250
+
 # Retention. Defaults are sane for a home server; a photo library changes
 # slowly and a year of monthlies costs little.
 RESTIC_KEEP_DAILY="7"
