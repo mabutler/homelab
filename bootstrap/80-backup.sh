@@ -57,7 +57,6 @@ chmod 0600 -- "$env_tmp"
 } > "$env_tmp"
 
 if [[ -f "$ENV_FILE" ]] && cmp -s -- "$env_tmp" "$ENV_FILE"; then
-    dbg "$ENV_FILE already current"
     rm -f -- "$env_tmp"
 else
     log "writing $ENV_FILE"

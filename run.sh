@@ -11,11 +11,7 @@ usage() {
     cat <<'EOF'
 usage: run.sh [options]
 
-  --list            show the bootstrap scripts in order and exit
   --only NN[,NN]    run only these numbered steps (e.g. --only 40,50)
-  --from NN         start at this step and run everything after it
-  --to NN           stop after this step
-  -v, --verbose     report no-op steps as well as changes
   -h, --help        this
 
 Steps are the two-digit prefixes of the scripts in bootstrap/.
@@ -24,24 +20,17 @@ EOF
 }
 
 main() {
-    local list=0 only='' from='' to=''
+    local only=''
 
     while (( $# )); do
         case "$1" in
-            --list)      list=1 ;;
             --only)      only="${2:?--only needs a step number}"; shift ;;
             --only=*)    only="${1#*=}" ;;
-            --from)      from="${2:?--from needs a step number}"; shift ;;
-            --from=*)    from="${1#*=}" ;;
-            --to)        to="${2:?--to needs a step number}"; shift ;;
-            --to=*)      to="${1#*=}" ;;
-            -v|--verbose) VERBOSE=1 ;;
             -h|--help)   usage; return 0 ;;
             *)           usage >&2; die "unknown argument: $1" ;;
         esac
         shift
     done
-    export VERBOSE
 
     local -a scripts=()
     local s
@@ -49,13 +38,6 @@ main() {
         [[ -f "$s" ]] && scripts+=("$s")
     done
     (( ${#scripts[@]} > 0 )) || die "no scripts found in $REPO_ROOT/bootstrap/"
-
-    if (( list )); then
-        for s in "${scripts[@]}"; do
-            printf '%s  %s\n' "$(step_of "$s")" "$(basename -- "$s")"
-        done
-        return 0
-    fi
 
     # Fail fast on configuration before touching the machine, rather than
     # three steps in. Each script re-loads these itself (convention 4); this
@@ -70,8 +52,6 @@ main() {
         local n
         n="$(step_of "$s")"
         [[ -n "$only" ]] && ! in_csv "$n" "$only" && continue
-        [[ -n "$from" ]] && (( 10#$n < 10#$from )) && continue
-        [[ -n "$to"   ]] && (( 10#$n > 10#$to   )) && continue
         selected+=("$s")
     done
     (( ${#selected[@]} > 0 )) || die "no bootstrap steps matched the given filters"

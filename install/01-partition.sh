@@ -101,7 +101,6 @@ BTRFS_OPTS="noatime,compress=zstd:3"
 mount -o "$BTRFS_OPTS" -- "$p2" "$TARGET_MNT"
 for sub in @ @home @var_log @containers @snapshots; do
     btrfs subvolume create "$TARGET_MNT/$sub" >/dev/null
-    dbg "subvolume $sub"
 done
 umount -- "$TARGET_MNT"
 ok "subvolumes created: @ @home @var_log @containers @snapshots"

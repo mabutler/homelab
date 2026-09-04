@@ -26,7 +26,6 @@ id -u "$ADMIN_USER" >/dev/null 2>&1 \
     || die "$ADMIN_USER does not exist — paru and makepkg refuse to run as root"
 
 if command -v paru >/dev/null 2>&1; then
-    dbg "paru already installed"
     ok "AUR support present"
     exit 0
 fi

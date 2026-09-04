@@ -51,11 +51,9 @@ report_drives || die "refusing to assemble a pool that does not match $DRIVES_CO
 lock_branch() {
     local d="$1"
     if findmnt -M "$d" >/dev/null 2>&1; then
-        dbg "$d is mounted; its underlying directory was locked before first mount"
         return 0
     fi
     if [[ "$(lsattr -d -- "$d" 2>/dev/null | cut -d' ' -f1)" == *i* ]]; then
-        dbg "$d already locked"
         return 0
     fi
     log "locking mountpoint $d"
@@ -161,7 +159,6 @@ awk -v b="$BEGIN_MARK" -v e="$END_MARK" '
 printf '%s\n' "$block" >> "$tmp_fstab"
 
 if cmp -s -- "$tmp_fstab" "$FSTAB"; then
-    dbg "fstab already current"
     rm -f -- "$tmp_fstab"
 else
     log "updating the managed block in $FSTAB"
@@ -195,9 +192,7 @@ log "mounting everything in fstab that is not already mounted"
 mount -a -t nomergerfs \
     || warn "mount -a reported a problem — the checks below will say which"
 
-if findmnt -M "$POOL_MNT" >/dev/null 2>&1; then
-    dbg "$POOL_MNT already mounted"
-else
+if ! findmnt -M "$POOL_MNT" >/dev/null 2>&1; then
     log "mounting $POOL_MNT"
     mount -- "$POOL_MNT" || warn "mounting the pool failed — see below"
 fi
@@ -244,7 +239,6 @@ mapfile -t pool_types < <(findmnt -no FSTYPE -- "$POOL_MNT" 2>/dev/null || true)
 pool_fstype="${pool_types[0]:-}"
 pool_depth="${#pool_types[@]}"
 pool_source="$(findmnt -fno SOURCE -- "$POOL_MNT" 2>/dev/null || true)"
-dbg "$POOL_MNT fstype=${pool_fstype:-<none>} source=${pool_source:-<none>} depth=$pool_depth"
 
 pool_ok=0
 case "${pool_fstype,,}" in

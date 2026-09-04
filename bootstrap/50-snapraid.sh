@@ -99,7 +99,6 @@ EOF
 } > "$conf_tmp"
 
 if [[ -f "$SNAPRAID_CONF" ]] && cmp -s -- "$conf_tmp" "$SNAPRAID_CONF"; then
-    dbg "$SNAPRAID_CONF already current"
     rm -f -- "$conf_tmp"
 else
     log "writing $SNAPRAID_CONF"
@@ -130,9 +129,7 @@ run systemctl start snapraid-sync.timer snapraid-scrub.timer
 # Run it now rather than waiting for 03:00, so the array is protected today and
 # any configuration mistake surfaces while you are sitting here. On an empty
 # pool this takes seconds.
-if [[ -e "${parity_mnt}/snapraid.parity" ]]; then
-    dbg "parity file already exists"
-else
+if [[ ! -e "${parity_mnt}/snapraid.parity" ]]; then
     log "first sync (fast — the pool is empty)"
     run /usr/local/bin/snapraid-sync
 fi

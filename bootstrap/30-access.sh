@@ -136,7 +136,6 @@ in_multiplexer() {
 }
 
 if tailscale status >/dev/null 2>&1; then
-    dbg "already on the tailnet"
     # `tailscale set` is the idempotent half of `tailscale up`.
     run tailscale set --ssh=true --hostname="$TARGET_HOSTNAME"
 
@@ -148,7 +147,7 @@ if tailscale status >/dev/null 2>&1; then
             err "$(ssh_peer 2>/dev/null | cut -d' ' -f1), which is a tailnet address, and not inside tmux."
             err ""
             err "Reconnect over the LAN, or wrap this in tmux, then:"
-            err "  cd /opt/stack && sudo ./run.sh --from 30"
+            err "  cd /opt/stack && sudo ./run.sh --only 30"
             die "refusing to cut the branch this script is sitting on"
         fi
 

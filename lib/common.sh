@@ -53,13 +53,6 @@ warn() { printf '%swarn%s %s\n' "$_C_YELLOW" "$_C_RESET" "$*" >&2; }
 err()  { printf '%sERR %s %s\n' "$_C_RED"    "$_C_RESET" "$*" >&2; }
 die()  { err "$*"; exit 1; }
 
-VERBOSE="${VERBOSE:-}"
-
-dbg() {
-    [[ -n "$VERBOSE" ]] || return 0
-    printf '%s  . %s %s\n' "$_C_DIM" "$_C_RESET" "$*" >&2
-}
-
 run() {
     "$@"
 }
@@ -121,8 +114,6 @@ load_host_conf() {
     source "$HOST_CONF"
 
     require_conf TARGET_HOSTNAME ADMIN_USER TIMEZONE LOCALE KEYMAP ROOT_SIZE
-
-    dbg "host.conf: $TARGET_HOSTNAME, admin=$ADMIN_USER, tz=$TIMEZONE"
 }
 
 # require_conf <VAR>... — fatal unless every named value is set and non-empty.
@@ -198,8 +189,6 @@ load_drives_conf() {
     (( ssd == 1 ))    || die "$DRIVES_CONF: expected exactly one 'ssd' row, found $ssd"
     (( parity == 1 )) || die "$DRIVES_CONF: expected exactly one 'parity' row, found $parity"
     (( data >= 1 ))   || die "$DRIVES_CONF: expected at least one 'data' row"
-
-    dbg "drives.conf: ${#DRIVE_SERIALS[@]} drives (${ssd} ssd, ${parity} parity, ${data} data)"
 }
 
 # serials_with_role <ssd|parity|data> — prints matching serials, one per line.
@@ -461,7 +450,6 @@ pkg_install() {
         want+=("$p")
     done
     if (( ${#want[@]} == 0 )); then
-        dbg "already installed: $*"
         return 0
     fi
     log "pacman: ${want[*]}"
@@ -487,7 +475,6 @@ aur_install() {
         pacman -Qq -- "$p" >/dev/null 2>&1 || want+=("$p")
     done
     if (( ${#want[@]} == 0 )); then
-        dbg "already installed from the AUR: $*"
         return 0
     fi
 
@@ -505,7 +492,6 @@ unit_enable() {
     local u
     for u in "$@"; do
         if systemctl is-enabled --quiet -- "$u" 2>/dev/null; then
-            dbg "already enabled: $u"
             (( now )) && ! systemctl is-active --quiet -- "$u" 2>/dev/null \
                 && run systemctl start -- "$u"
             continue
@@ -640,7 +626,6 @@ install_file() {
 
     INSTALL_CHANGED=0
     if [[ -f "$dst" ]] && cmp -s -- "$src" "$dst"; then
-        dbg "unchanged: $dst"
         return 0
     fi
     log "install $dst"
@@ -684,7 +669,6 @@ install_template() {
     INSTALL_CHANGED=0
     if [[ -f "$dst" ]] && cmp -s -- "$tmp" "$dst"; then
         rm -f -- "$tmp"
-        dbg "unchanged: $dst"
         return 0
     fi
     log "install $dst (templated)"

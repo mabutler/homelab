@@ -31,7 +31,6 @@ OFF=0
 while (( $# )); do
     case "$1" in
         --off) OFF=1 ;;
-        -v|--verbose) VERBOSE=1 ;;
         -*) die "unknown argument: $1" ;;
         *) APP="$1" ;;
     esac

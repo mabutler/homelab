@@ -36,9 +36,7 @@ pkg_install snapper snap-pac grub-btrfs inotify-tools
 # Ours is kept rather than snapper's because it is a first-class subvolume
 # outside @ — a rollback of the root subvolume must not take the snapshots
 # with it, which is exactly what would happen if snapshots lived inside @.
-if grep_output '(^|[[:space:]])root([[:space:]]|$)' snapper list-configs; then
-    dbg "snapper config 'root' already exists"
-else
+if ! grep_output '(^|[[:space:]])root([[:space:]]|$)' snapper list-configs; then
     log "creating the snapper config for /"
 
     was_mounted=0
