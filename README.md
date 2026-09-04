@@ -1,115 +1,41 @@
 # homelab
 
 Scripted provisioning for an Arch Linux home server, from bare metal: partition
-and install the OS, configure storage, stand up monitoring and alerting —
-reproducibly, from a fresh Arch ISO, in one sitting.
+and install the OS, configure storage, stand up monitoring and alerting.
 
-Plain bash. No configuration-management framework. Arch Linux only. Written to
-provision more than one machine: **a second host is a second `host.conf`, not a
-second repository.**
-
-Cloned to `/opt/stack` on each host it provisions.
+Plain bash. No configuration-management framework. 
 
 ---
 
-## Status
-
-| Stage | | |
-|---|---|---|
-| **A** | Scaffolding — `lib/common.sh`, config files, `run.sh` | **done** |
-| **B** | `install/` — preflight, partition, pacstrap, chroot | **done, run on real hardware** |
-| **C** | `bootstrap/` — `10` through `70` | **done, run on real hardware** |
-| **D** | `tools/verify.sh` — the acceptance checklist as assertions | **done**; failure drills outstanding |
-| E | `apps/` — Podman Quadlet units | next |
-
-Day-to-day operation, the quarterly update ritual, what each alert means and
-what to do when a drive dies: **[`RUNBOOK.md`](RUNBOOK.md)**.
-
-Target host `fidelacchius`: Intel i3-2120, 7.7 GiB RAM, legacy BIOS.
-One 120 GB SSD, three 2 TB and one 1 TB spinning drives.
-See [`docs/smart-baseline-2026-08-27.md`](docs/smart-baseline-2026-08-27.md)
-for the drive facts this repository was configured from, and for the pre-build
-SMART zero point — including an open counter on `Z4Z972VW` that the first two
-weeks of `smartd` and `tools/smart-snapshot.sh` output are expected to resolve.
-
----
-
-## The two inputs
-
-Everything machine-specific lives in exactly two files.
+## Inputs
 
 **`host.conf`** — hostname, admin user, timezone, ntfy topic, Healthchecks
 URLs. Gitignored; copy `host.conf.example` and fill it in.
 
-> Store the real `host.conf` in your password manager. A rebuild can restore
+> Store the real `host.conf` securely. A rebuild can restore
 > this repository, but not this machine's identity.
 
-**`drives.conf`** — the serial → label → role table. Read by the scripts
-rather than kept as documentation, so it cannot drift from reality.
+**`drives.conf`** — which drives are used for which purpose
 
-Serials are the only stable identity a drive has here: this machine has a SATA
-add-on card and an external drive tower, and device letters shuffle between
-boots. Every destructive or verifying operation resolves a serial through
-`/dev/disk/by-id/`. **No script accepts a `/dev/sdX` path.**
-
----
-
-## Layout
-
-```
-homelab/
-├── host.conf.example       committed
-├── host.conf               GITIGNORED — the only per-machine file
-├── drives.conf             committed — serial → label → role
-├── lib/common.sh           logging, guards, config loading, install helpers
-├── lib/publish.sh          serve.conf → live tailscale serve/funnel state
-├── install/                run from the live ISO. destructive. once.
-├── bootstrap/              run on the installed system. idempotent.
-│                           10 base · 15 aur · 20 snapshots · 30 access
-│                           40 storage · 50 snapraid · 60 alerting · 70 podman
-├── files/                  everything that becomes host configuration
-├── apps/<name>/            unit · <name>.env.example · serve.conf · README
-├── tools/                  check-drives.sh, verify.sh, smart-snapshot.sh, …
-├── RUNBOOK.md              operating notes — read this when something breaks
-├── docs/
-├── deploy.sh               link units, start them, make them reachable
-└── run.sh                  runs bootstrap/ in order
-```
+Serials are the only identifier used by these scripts.
 
 ---
 
 ## Conventions
 
 1. **Configuration lives in `files/` and is installed with `install -Dm644`.**
-   Scripts do not write config with heredocs. A file in the tree is diffable
-   and greppable; a heredoc is neither. Use `install_file`, or
-   `install_template` when a value from `host.conf` has to be substituted.
 2. **`install/` is destructive and runs once. `bootstrap/` is idempotent and
-   re-runnable.** Running `run.sh` twice produces no changes on the second pass
-   — and, at default verbosity, almost no output. That silence is the test.
-3. **Nothing in `bootstrap/` ever writes to a pool drive.** The scripts verify
-   that drives match `drives.conf` and refuse to proceed on a mismatch. They
-   never format, relabel, or repair. Provisioning a replacement drive is a
-   documented manual procedure plus an explicit-argument tool.
+   re-runnable.**
+3. **Nothing in `bootstrap/` ever writes to a pool drive.**
 4. **Every script sources `lib/common.sh`**, which applies `set -euo pipefail`
-   and loads its own config — scripts are runnable individually, not only
-   through `run.sh`.
-5. **Templating is a single substitution pass over a fixed key list.** No
-   template engine. An unsubstituted `@PLACEHOLDER@` is a hard error rather
-   than something that silently ships into a config file.
-6. **One commit per working script**, with its test result in the message.
+   and loads its own config.
 
 ---
 
 ## Install sequence
 
-Physical access is needed only to insert the USB stick and reach a console
-once.
-
-1. Boot the Arch ISO. Set a root password, note the address, continue over SSH
-   from a laptop. A DHCP reservation for the NIC keeps the address stable
-   across repeated runs.
-2. `pacman -Sy git`; clone this repository to `/root/stack`.
+1. Boot the Arch ISO.
+2. `pacman -Sy git`; clone this repository.
 3. Place `host.conf`; confirm `drives.conf` matches
    `lsblk -d -o PATH,SIZE,ROTA,MODEL,SERIAL`.
 4. `install/00-preflight.sh` — reports firmware mode and TRIM support,
@@ -118,7 +44,7 @@ once.
 5. `install/01-partition.sh`, `02-pacstrap.sh`, `03-chroot.sh`. The repository
    is copied into the target at `/opt/stack` with `.git` intact. The user, SSH
    key and sshd are configured so the first boot is reachable without a
-   keyboard. `03` does not reboot; it prints the next command and exits.
+   keyboard.
 6. Reboot, remove the USB, SSH back in.
 7. `cd /opt/stack && sudo ./run.sh` — pauses once for you to authenticate the
    machine on the tailnet, then continues on its own.
@@ -136,17 +62,8 @@ Certificates** enabled under DNS, and the policy from
 
 ```
 ./run.sh                 all bootstrap steps, in order
-./run.sh --list          show the steps and exit
 ./run.sh --only 40,50    just these
-./run.sh --from 30       this one and everything after
-./run.sh --dry-run       print what would change, change nothing
-./run.sh -v              report no-op steps as well as changes
 ```
-
-`--dry-run` is meaningful for `bootstrap/` only. `install/` scripts do not
-honour it: a dry run of a partitioning script cannot report what the step
-after it would have found, and a flag that appears to work but doesn't is
-worse than no flag.
 
 ---
 
@@ -170,10 +87,8 @@ Btrfs subvolumes on p2: `@` → `/`, `@home`, `@var_log`, `@containers` →
 `noatime,compress=zstd:3`. Kernels live inside `@`, so a snapshot rollback
 restores a matching kernel and initramfs.
 
-Application state lives on ext4, not Btrfs: databases perform badly under
-copy-on-write, and app state should not be rewound by an OS snapshot rollback.
-p3 takes the full remainder — the SSD reports TRIM support, so no
-overprovisioning gap is reserved.
+Application state lives on ext4, not Btrfs: app state should not be rewound by
+an OS snapshot rollback. p3 takes the full remainder.
 
 **Pool**: mergerfs at `/mnt/pool` over `/mnt/disk1`–`/mnt/disk3`, with parity
 at `/mnt/parity1` outside the pool. SnapRAID gives single-drive-failure
@@ -183,10 +98,10 @@ shell. Branch mountpoints are locked (`chmod 0000`, `chattr +i`) before first
 mount, so an unmounted drive cannot silently present an empty
 root-filesystem directory as a writable pool branch.
 
-**OS**: `linux-lts` primary with mainline `linux` as a fallback boot entry.
-GRUB with `snapper` + `snap-pac` + `grub-btrfs`, so every package transaction
-is bracketed by bootable snapshots. zram swap, journald capped at 1 GiB,
-minimal package set, nothing that builds kernel modules.
+**OS**: `Arch` using `linux-lts`. GRUB with `snapper` + `snap-pac` + 
+`grub-btrfs`, so every package transaction is bracketed by bootable snapshots. 
+zram swap, journald capped at 1 GiB, minimal package set, nothing that builds 
+kernel modules.
 
 **Access**: sshd keys-only with no root login and no password auth; Tailscale
 with `--ssh` as an independent second path to a shell. Nothing forwarded at
