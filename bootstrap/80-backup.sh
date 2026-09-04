@@ -57,7 +57,6 @@ chmod 0600 -- "$env_tmp"
 } > "$env_tmp"
 
 if [[ -f "$ENV_FILE" ]] && cmp -s -- "$env_tmp" "$ENV_FILE"; then
-    dbg "$ENV_FILE already current"
     rm -f -- "$env_tmp"
 else
     log "writing $ENV_FILE"
@@ -93,23 +92,21 @@ unit_enable --now homelab-backup-check.timer
 # from a provisioning script means a typo in RESTIC_REPOSITORY silently creates
 # a second, empty repository rather than failing to find the real one — and the
 # first you would know is a restore that comes back empty.
-if [[ -z "$DRY_RUN" ]]; then
-    # shellcheck source=/dev/null
-    set -a; source "$ENV_FILE"; set +a
-    if restic snapshots >/dev/null 2>&1; then
-        count="$(restic snapshots --json 2>/dev/null | grep -o '"time"' | wc -l || echo 0)"
-        ok "repository reachable — $count snapshot(s)"
-    else
-        warn "no repository at $RESTIC_REPOSITORY yet (or credentials are wrong)."
-        warn "Create it once, by hand, after checking the value is exactly right:"
-        warn ""
-        warn "  set -a; . /etc/homelab/backup.env; set +a"
-        warn "  restic init"
-        warn ""
-        warn "Then run the first backup in the foreground and watch it:"
-        warn "  sudo systemctl start homelab-backup.service"
-        warn "  journalctl -u homelab-backup -f"
-    fi
+# shellcheck source=/dev/null
+set -a; source "$ENV_FILE"; set +a
+if restic snapshots >/dev/null 2>&1; then
+    count="$(restic snapshots --json 2>/dev/null | grep -o '"time"' | wc -l || echo 0)"
+    ok "repository reachable — $count snapshot(s)"
+else
+    warn "no repository at $RESTIC_REPOSITORY yet (or credentials are wrong)."
+    warn "Create it once, by hand, after checking the value is exactly right:"
+    warn ""
+    warn "  set -a; . /etc/homelab/backup.env; set +a"
+    warn "  restic init"
+    warn ""
+    warn "Then run the first backup in the foreground and watch it:"
+    warn "  sudo systemctl start homelab-backup.service"
+    warn "  journalctl -u homelab-backup -f"
 fi
 
 cat >&2 <<EOF

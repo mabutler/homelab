@@ -58,7 +58,6 @@ link_in_target() {
 
     current="$(readlink -- "$path" 2>/dev/null || true)"
     if [[ "$current" == "$target" ]]; then
-        dbg "$link already -> $target"
         return 0
     fi
 
@@ -91,9 +90,7 @@ chr hwclock --systohc
 # credential for a console login at the machine itself. That is the way back in
 # when sshd and Tailscale are both unavailable, so it is set below and checked
 # rather than left optional.
-if chr id -u "$ADMIN_USER" >/dev/null 2>&1; then
-    dbg "user $ADMIN_USER already exists"
-else
+if ! chr id -u "$ADMIN_USER" >/dev/null 2>&1; then
     log "creating $ADMIN_USER"
     chr useradd -m -G wheel -s /bin/bash "$ADMIN_USER"
 fi

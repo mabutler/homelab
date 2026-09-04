@@ -158,39 +158,28 @@ tailnet-wide and survives rebuilds of this machine."
 # ---------------------------------------------------------------------------
 # Converging
 # ---------------------------------------------------------------------------
-# publish_app <app> <app-dir> — idempotent. Sets PUBLISH_CHANGED on a change.
+# publish_app <app> <app-dir> — idempotent.
 publish_app() {
     local app="$1" dir="$2"
-    load_serve_conf "$dir" || { dbg "$app declares no serve.conf"; return 0; }
+    load_serve_conf "$dir" || return 0
 
     require_cmd tailscale jq
-    if [[ -n "$DRY_RUN" ]]; then
-        log "would serve $SERVE_PATH -> $SERVE_TARGET${FUNNEL:+ (funnel=$FUNNEL)}"
-        return 0
-    fi
-
     tailscale status >/dev/null 2>&1 \
         || { warn "$app: not on the tailnet, cannot publish — run bootstrap/30-access.sh"; return 0; }
 
     require_https_certs
 
-    if serve_is_mounted "$SERVE_PATH" "$SERVE_TARGET" "$SERVE_PORT"; then
-        dbg "$app: already served on $SERVE_PORT at $SERVE_PATH"
-    else
+    if ! serve_is_mounted "$SERVE_PATH" "$SERVE_TARGET" "$SERVE_PORT"; then
         log "$app: serving :$SERVE_PORT$SERVE_PATH -> $SERVE_TARGET on the tailnet"
         local -a serve_args=(--bg --https="$SERVE_PORT")
         [[ "$SERVE_PATH" == "/" ]] || serve_args+=(--set-path="$SERVE_PATH")
         run tailscale serve "${serve_args[@]}" "$SERVE_TARGET"
-        # Read by the caller (deploy.sh), not here.
-        # shellcheck disable=SC2034
-        PUBLISH_CHANGED=1
         ok "$app: reachable on the tailnet"
     fi
 
     [[ "${FUNNEL,,}" == yes ]] || return 0
 
     if funnel_is_on "$SERVE_PORT"; then
-        dbg "$app: funnel already on for $SERVE_PORT"
         return 0
     fi
 
@@ -218,7 +207,5 @@ publish_app() {
     # serve, so this cannot silently do nothing.
     log "$app: enabling Funnel on $SERVE_PORT — reachable from the internet"
     run tailscale funnel --bg --https="$SERVE_PORT" "$SERVE_TARGET"
-    # shellcheck disable=SC2034
-    PUBLISH_CHANGED=1
     ok "$app: published to the public internet"
 }

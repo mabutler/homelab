@@ -36,9 +36,7 @@ pkg_install snapper snap-pac grub-btrfs inotify-tools
 # Ours is kept rather than snapper's because it is a first-class subvolume
 # outside @ — a rollback of the root subvolume must not take the snapshots
 # with it, which is exactly what would happen if snapshots lived inside @.
-if grep_output '(^|[[:space:]])root([[:space:]]|$)' snapper list-configs; then
-    dbg "snapper config 'root' already exists"
-else
+if ! grep_output '(^|[[:space:]])root([[:space:]]|$)' snapper list-configs; then
     log "creating the snapper config for /"
 
     was_mounted=0
@@ -66,14 +64,9 @@ run chmod 0750 -- "$SNAP_DIR"
 
 # The dance above is the one step in this repository that could quietly leave
 # the host without its snapshot subvolume mounted. Check rather than hope.
-#
-# Skipped under DRY_RUN: nothing was mounted, so asserting the post-state would
-# fail every dry run and teach you to ignore it.
-if [[ -z "$DRY_RUN" ]]; then
-    snap_opts="$(findmnt -no OPTIONS -- "$SNAP_DIR" 2>/dev/null || true)"
-    [[ "$snap_opts" == *"subvol=/@snapshots"* ]] \
-        || die "$SNAP_DIR is not the @snapshots subvolume (options: ${snap_opts:-not mounted}) — fix before continuing, snapshots would land inside @"
-fi
+snap_opts="$(findmnt -no OPTIONS -- "$SNAP_DIR" 2>/dev/null || true)"
+[[ "$snap_opts" == *"subvol=/@snapshots"* ]] \
+    || die "$SNAP_DIR is not the @snapshots subvolume (options: ${snap_opts:-not mounted}) — fix before continuing, snapshots would land inside @"
 
 # ---------------------------------------------------------------------------
 # Retention
@@ -112,12 +105,10 @@ unit_enable --now grub-btrfsd.service
 # `systemctl enable --now` returns success for a Type=simple unit as soon as
 # the exec succeeds, so a daemon that dies a second later still looks like it
 # started. Give it a moment and check that it is actually alive.
-if [[ -z "$DRY_RUN" ]]; then
-    sleep 2
-    if ! systemctl is-active --quiet grub-btrfsd.service; then
-        journalctl -u grub-btrfsd.service -n 20 --no-pager >&2 || true
-        die "grub-btrfsd is enabled but not running — snapshots would never reach the GRUB menu"
-    fi
+sleep 2
+if ! systemctl is-active --quiet grub-btrfsd.service; then
+    journalctl -u grub-btrfsd.service -n 20 --no-pager >&2 || true
+    die "grub-btrfsd is enabled but not running — snapshots would never reach the GRUB menu"
 fi
 
 log "regenerating grub.cfg so the snapshot submenu exists now"
@@ -128,9 +119,7 @@ run grub-mkconfig -o /boot/grub/grub.cfg 2>/dev/null
 # refers to, or the next boot silently picks something else.
 #
 # grep reads the file directly here — no pipeline, so no SIGPIPE hazard.
-if [[ -z "$DRY_RUN" ]]; then
-    grep -qF "Arch Linux, with Linux linux-lts'" /boot/grub/grub.cfg \
-        || die "the LTS menu entry is missing from grub.cfg after regeneration — GRUB_DEFAULT would not resolve"
-fi
+grep -qF "Arch Linux, with Linux linux-lts'" /boot/grub/grub.cfg \
+    || die "the LTS menu entry is missing from grub.cfg after regeneration — GRUB_DEFAULT would not resolve"
 
 ok "snapshots configured — pacman transactions are now bracketed"

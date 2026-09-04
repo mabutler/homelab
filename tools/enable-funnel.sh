@@ -31,7 +31,6 @@ OFF=0
 while (( $# )); do
     case "$1" in
         --off) OFF=1 ;;
-        -v|--verbose) VERBOSE=1 ;;
         -*) die "unknown argument: $1" ;;
         *) APP="$1" ;;
     esac
@@ -112,10 +111,9 @@ confirm "PUBLISH $node_dns"
 log "enabling Funnel on 443 -> $SERVE_TARGET"
 run tailscale funnel --bg "$SERVE_TARGET"
 
-if [[ -z "$DRY_RUN" ]]; then
-    tailscale funnel status >&2 || warn "could not read funnel status"
+tailscale funnel status >&2 || warn "could not read funnel status"
 
-    cat >&2 <<EOF
+cat >&2 <<EOF
 
   ────────────────────────────────────────────────────────────
   Verification gate — do all of these before relying on it:
@@ -132,6 +130,5 @@ if [[ -z "$DRY_RUN" ]]; then
   that conclusion.
   ────────────────────────────────────────────────────────────
 EOF
-fi
 
 ok "Funnel enabled for $node_dns"

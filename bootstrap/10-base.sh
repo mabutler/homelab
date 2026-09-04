@@ -29,9 +29,7 @@ run sysctl --system >/dev/null
 # The generator turns zram-generator.conf into a unit, so systemd has to be
 # told to look again before the unit exists to start.
 unit_reload
-if swapon --show=NAME --noheadings 2>/dev/null | grep -q zram; then
-    dbg "zram swap already active"
-else
+if ! swapon --show=NAME --noheadings 2>/dev/null | grep -q zram; then
     log "starting zram swap"
     run systemctl start systemd-zram-setup@zram0.service
 fi

@@ -126,11 +126,9 @@ are handled for you."
 
         run mkdir -p -- "$SECRETS_DIR"
         run chmod 0700 -- "$SECRETS_DIR"
-        if [[ -L "$link" && "$(readlink -f -- "$link")" == "$(readlink -f -- "$real")" ]]; then
-            dbg "already linked: $link"
-        elif [[ -e "$link" && ! -L "$link" ]]; then
+        if [[ -e "$link" && ! -L "$link" ]]; then
             die "$link exists and is not a symlink — move it aside; this script will not replace a real file"
-        else
+        elif [[ ! -L "$link" || "$(readlink -f -- "$link")" != "$(readlink -f -- "$real")" ]]; then
             log "link $link -> $real"
             run ln -sfn -- "$real" "$link"
             DEPLOY_CHANGED=1
@@ -142,7 +140,6 @@ are handled for you."
     for f in "${units[@]}"; do
         target="$QUADLET_DIR/$(basename -- "$f")"
         if [[ -L "$target" && "$(readlink -f -- "$target")" == "$(readlink -f -- "$f")" ]]; then
-            dbg "already linked: $(basename -- "$f")"
             continue
         fi
         if [[ -e "$target" && ! -L "$target" ]]; then
@@ -233,7 +230,7 @@ prune_orphans() {
         #
         # Only the name derived from the unit we just pruned, so this can never
         # reach a container belonging to something else.
-        if [[ "$base" == *.container && -z "$DRY_RUN" ]]; then
+        if [[ "$base" == *.container ]]; then
             svc="${base%.container}"
             if [[ "$(podman container inspect -f '{{.State.Running}}' "$svc" 2>/dev/null || true)" == "true" ]]; then
                 warn "$svc is still running with no unit behind it — stopping the container"
@@ -271,7 +268,6 @@ main() {
             --no-start) no_start=1 ;;
             --no-publish) no_publish=1 ;;
             -h|--help) usage; return 0 ;;
-            -v|--verbose) VERBOSE=1 ;;
             -*) usage >&2; die "unknown argument: $1" ;;
             *)  want+=("$1") ;;
         esac
@@ -296,11 +292,9 @@ main() {
     # Converge the stable repo path before anything is linked or started, since
     # units resolve it at container start.
     run mkdir -p -- "$(dirname -- "$REPO_LINK")"
-    if [[ -L "$REPO_LINK" && "$(readlink -f -- "$REPO_LINK")" == "$REPO_ROOT" ]]; then
-        dbg "$REPO_LINK -> $REPO_ROOT"
-    elif [[ -e "$REPO_LINK" && ! -L "$REPO_LINK" ]]; then
+    if [[ -e "$REPO_LINK" && ! -L "$REPO_LINK" ]]; then
         die "$REPO_LINK exists and is not a symlink — move it aside"
-    else
+    elif [[ ! -L "$REPO_LINK" || "$(readlink -f -- "$REPO_LINK")" != "$REPO_ROOT" ]]; then
         log "link $REPO_LINK -> $REPO_ROOT"
         run ln -sfn -- "$REPO_ROOT" "$REPO_LINK"
     fi
@@ -323,7 +317,6 @@ main() {
             [[ -f "$t" ]] || continue
             dst="/etc/tmpfiles.d/$(basename -- "$t")"
             if [[ -f "$dst" ]] && cmp -s -- "$t" "$dst"; then
-                dbg "unchanged: $dst"
                 continue
             fi
             log "install $dst"
@@ -350,11 +343,7 @@ main() {
 
     # Quadlet turns .container files into services at daemon-reload, so nothing
     # exists to start until this runs.
-    if (( DEPLOY_CHANGED )); then
-        unit_reload
-    else
-        dbg "nothing changed"
-    fi
+    (( DEPLOY_CHANGED )) && unit_reload
 
     [[ "$mode" == deploy ]] || return 0
     if (( no_start )); then
@@ -408,8 +397,6 @@ main() {
             fi
         done
 
-        [[ -n "$DRY_RUN" ]] && continue
-
         # Judge them all after starting them all: a database that is still
         # doing first-run initialisation would otherwise be declared broken
         # while the server waiting on it has not been asked to start yet.
@@ -440,14 +427,11 @@ main() {
         return 0
     fi
 
-    PUBLISH_CHANGED=0
     for app in "${want[@]}"; do
         # Publish only what is actually serving: publishing something that is
-        # not running means debugging a 502 from a phone on cellular.
-        #
-        # Say so at normal verbosity. This was a dbg line, which meant a single
-        # stopped sidecar silently skipped publishing and the app was simply
-        # unreachable with nothing in the output explaining why.
+        # not running means debugging a 502 from a phone on cellular. Warn
+        # explicitly rather than skipping quietly — a stopped sidecar should
+        # not leave the app unreachable with nothing explaining why.
         local -a down=()
         local svc
         while read -r svc; do
@@ -459,7 +443,6 @@ main() {
         fi
         publish_app "$app" "$APPS_DIR/$app"
     done
-    (( PUBLISH_CHANGED )) || dbg "publishing already converged"
 }
 
 main "$@"
