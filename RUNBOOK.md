@@ -112,6 +112,16 @@ If an update breaks the machine, reboot, pick the pre-update snapshot from the
 GRUB **Advanced options → snapshots** submenu, and you are back where you
 started in about two minutes.
 
+### Or just rebuild it
+
+A snapshot rollback is the fast path for an update that broke something
+obvious and recent. For anything less clear-cut, this repository is meant to
+be cheap enough to rebuild from scratch instead of debugged in place: reinstall
+per [`README.md`](README.md), and `bootstrap/85-restore.sh` brings app data
+back from the last backup automatically. That is the same "start over and run
+everything again" loop as a first build — treat a stuck quarterly update as a
+reason to use it, not a reason to make an exception.
+
 ---
 
 ## Alerts, and what each one means
@@ -603,6 +613,32 @@ both wall clock and B2 transactions.
 repository. **There is no recovery without it, by design.** It must live
 somewhere reachable when Vaultwarden is the thing that is down.
 
+### Restoring
+
+`bootstrap/85-restore.sh` runs at the end of every `run.sh`, and does the
+restore automatically **when it is needed and never otherwise**: it restores
+an app's data only when that app's `/opt/appdata/<app>` directory does not
+already exist. On a live host every one already exists, so this step is a
+no-op on every ordinary re-run — it only does something the first time
+`run.sh` reaches it after a fresh `install/`, which is exactly the "start
+over and run everything again" loop this repository is built around.
+
+What comes back on its own: every app's directory contents (attachments, RSA
+keys, recipe images...), each SQLite database materialised from its dump, the
+photo library, and any `apps/<name>/<name>.env` this host does not already
+have — so a rebuild does not also mean retyping every app's secrets by hand.
+
+**Immich's PostgreSQL database is the one exception**, because restoring it
+needs `pg_restore` against a running container that does not exist yet at
+that point in the sequence. `bootstrap/85-restore.sh` stages the dump and
+prints the one command to finish the job after `deploy.sh immich` — do not
+skip it, an Immich with photos but no database is not actually restored.
+
+To restore in isolation — testing the drill, or recovering one app without a
+full rebuild — `sudo ./run.sh --only 85` re-runs just this step; it is as
+safe to re-run as everything else in `bootstrap/`, since it only ever acts on
+a directory that is still missing.
+
 ### If `restic check` reports damage
 
 Do not prune — prune rewrites the pack files that `check` just told you it
@@ -636,10 +672,15 @@ Exit status is non-zero only on a real failure, so it works as a gate.
 
 ## Rebuilding from scratch
 
-Full sequence in [`README.md`](README.md). The two things that are not in git:
+Full sequence in [`README.md`](README.md). App data comes back on its own —
+see [Restoring](#restoring) — so a rebuild is not a data-loss event, only
+downtime. The two things that are not in git and do not restore themselves:
 
-1. **`host.conf`** — gitignored. The real copy lives in your password manager.
-   A rebuild restores the repository but not this machine's identity.
+1. **`host.conf`** — gitignored. The real copy lives in your password manager,
+   and it has to exist *before* `run.sh` can reach `bootstrap/85-restore.sh`
+   at all: it carries `RESTIC_REPOSITORY` and `RESTIC_PASSWORD`, the only way
+   this repository finds its own backups. A rebuild restores the repository
+   but not this machine's identity.
 2. **Tailscale node identity** — the machine re-authenticates and gets a new
    node. Remove the stale one from the admin console.
 
@@ -775,12 +816,15 @@ Recorded because each one cost real time and none of them are obvious.
   swap two labels in `drives.conf` and confirm `40` refuses; stop
   `homelab-heartbeat.timer` and confirm the dead-man switch alerts; boot a
   snapshot and return cleanly.
-- **A restore that has actually been performed.** The backups run, but a
-  backup nobody has restored is a hypothesis, not a backup. The drill is at the
-  end of [`docs/backup-inventory.md`](docs/backup-inventory.md) and belongs in
+- **A restore that has actually been performed.** `bootstrap/85-restore.sh`
+  automates the restore, but a backup nobody has watched come back on a real
+  rebuild is still a hypothesis, not a tested backup. The drill is at the end
+  of [`docs/backup-inventory.md`](docs/backup-inventory.md) and belongs in
   Phase 5, before the failure drills.
   Add to that file when you add an app — the per-app "how" (`.backup`,
-  `pg_dump`, plain copy) is easy to know now and expensive to reconstruct.
+  `pg_dump`, plain copy) is easy to know now and expensive to reconstruct, and
+  `bootstrap/85-restore.sh` needs to know it too if the app isn't a plain
+  SQLite directory.
 - **Applications.** Phase 3. Vaultwarden, Immich, Mealie, Vikunja, Memos and
   Homepage are deployed. Still to come: Home Assistant and Z-Wave JS UI (3d),
   the

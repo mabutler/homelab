@@ -29,6 +29,11 @@ Serials are the only identifier used by these scripts.
 3. **Nothing in `bootstrap/` ever writes to a pool drive.**
 4. **Every script sources `lib/common.sh`**, which applies `set -euo pipefail`
    and loads its own config.
+5. **A new app documents its backup strategy in its own README the day it's
+   added, and teaches `bootstrap/85-restore.sh` how to restore it if it isn't
+   a plain SQLite directory.** The "how" is easy to know while you're building
+   the app and expensive to reconstruct later — see any `apps/*/README.md`
+   for the shape.
 
 ---
 

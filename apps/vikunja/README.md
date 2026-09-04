@@ -34,6 +34,20 @@ redeploy. `deploy.sh` restarts the container when the env file changes.
 A database referencing attachments that were not restored is worse than
 neither.
 
+## Backup
+
+Captured nightly by `homelab-backup`: the database via SQLite `.backup`, then
+the whole directory — `db/` and `files/` together, in the same run, for the
+"both, together" reason above. The live database file itself is excluded from
+the snapshot; only the dump represents it. See
+[`docs/backup-inventory.md`](../../docs/backup-inventory.md) for the exact
+mechanism.
+
+Restored automatically by `bootstrap/85-restore.sh` on a fresh install — the
+directory and the database both come back, no manual step needed. It only
+acts when `/opt/appdata/vikunja` does not already exist, so a live host is
+never touched.
+
 ## The uid
 
 **Vikunja runs as uid 1000 inside the container and does not support

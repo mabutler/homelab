@@ -44,8 +44,7 @@ lost by waiting until you know how the rest behaves on this hardware.
 
 The database and the photos are **two halves of one thing** — the database
 holds the metadata, albums, faces and the paths. Restoring one without the
-other gives you a library that does not match itself. Phase 4 has to back them
-up together.
+other gives you a library that does not match itself — see [Backup](#backup).
 
 ---
 
@@ -172,9 +171,29 @@ version-related.
 sudo podman inspect immich-server --format '{{.ImageName}}'
 ```
 
-### Backups
+---
 
-`/opt/appdata/immich/postgres` must be captured with `pg_dump` from the running
-container, never as a file copy, and **together with** `/mnt/pool/photos` — the
-database and the files are two halves of one library. See
-[`docs/backup-inventory.md`](../../docs/backup-inventory.md).
+## Backup
+
+`/opt/appdata/immich/postgres` is captured with `pg_dump` from the running
+container, nightly, never as a file copy — and **together with**
+`/mnt/pool/photos`, since the database and the files are two halves of one
+library. See [`docs/backup-inventory.md`](../../docs/backup-inventory.md) for
+the exact mechanism.
+
+**Restoring is not fully automatic, and this is the one app where that
+matters.** `bootstrap/85-restore.sh` brings the photos and `immich.env` back
+on its own on a fresh install. The database does not: `pg_restore` needs a
+running container, which does not exist yet at that point in the sequence, so
+the dump is staged and the script prints the command to finish it —
+
+```bash
+sudo ./deploy.sh immich
+gunzip -c /var/lib/homelab/restore/immich.sql.dump.gz | \
+  sudo podman exec -i -e PGPASSWORD=$(grep -m1 '^DB_PASSWORD=' \
+    apps/immich/immich.env | cut -d= -f2-) immich-database \
+  psql -U postgres immich
+```
+
+run it before trusting the library. Photos with no matching database is a
+rebuild that looks done and is not.

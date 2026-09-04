@@ -87,6 +87,18 @@ The port each app is on is in the RUNBOOK's application table.
 
 ---
 
+## Backup
+
+No `/opt/appdata/homepage` — there is no state here for `homelab-backup` to
+capture. `services.yaml` and the rest are configuration, version controlled
+in git, which is its own durable copy; see [The config is in
+git](#the-config-is-in-git).
+
+The one exception is `homepage.env` — captured and restored exactly like
+every other app's secrets (see
+[`docs/backup-inventory.md`](../../docs/backup-inventory.md)), so
+`HOMEPAGE_ALLOWED_HOSTS` does not need retyping on a rebuild.
+
 ## What this does not do
 
 No metrics history, no alerting, no control — it cannot start or stop anything,

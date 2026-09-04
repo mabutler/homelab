@@ -137,13 +137,41 @@ Live database files are **excluded** from the snapshot — only the verified
 dumps represent them. A repository holding a torn `db.sqlite3` beside a good
 `vaultwarden.sqlite3.dump` is how you restore the wrong one at 2am.
 
+## Restoring
+
+**Implemented** by `bootstrap/85-restore.sh`, the counterpart to
+`homelab-backup` above: it runs at the end of every `run.sh` and restores an
+app's data automatically, but only when that app's `/opt/appdata/<app>`
+directory does not already exist — a no-op on a live host, and exactly what
+runs the first time after a fresh `install/`. Vaultwarden, Mealie, Vikunja and
+Memos come back whole (directory contents plus their SQLite database,
+materialised from the `.backup` dump). The photo library comes back the same
+way. `apps/<name>/<name>.env` files this host does not already have are
+restored too, so a rebuild does not also mean retyping every app's secrets.
+
+**Immich's PostgreSQL is the one thing it cannot finish**, because
+`pg_restore` needs a running container that does not exist yet at that point
+in the sequence. The dump is staged and the one command to finish the job —
+printed by `bootstrap/85-restore.sh` itself — has to run after
+`deploy.sh immich`.
+
+**When you add an app to the Tier 1 table above**, `bootstrap/85-restore.sh`
+needs to know how to restore it too, the same day, for the same reason this
+file exists: the "how" is easy to know now and expensive to reconstruct.
+A plain SQLite app just needs a `restore_sqlite_app` call added; anything else
+— another Postgres, a KV store, whatever comes next — needs the same
+by-hand-after-deploy treatment Immich gets, documented here and there.
+
 ## Restore drills
 
-A backup nobody has restored is a hypothesis. Phase 5 should include, at least
-once:
+A restore that has never been watched running is still a hypothesis, even
+with `bootstrap/85-restore.sh` doing the mechanical part. Phase 5 should
+include, at least once:
 
-1. Restore Vaultwarden to a scratch directory, point a container at it, log in.
-2. Restore the Immich database and a subset of photos, confirm the library
-   matches itself.
+1. A real rebuild — wipe the SSD, reinstall, `run.sh` — and confirm Vaultwarden,
+   Mealie, Vikunja and Memos come back logged-in-and-usable, not just
+   file-present.
+2. The printed Immich database command, run for real: confirm the library
+   matches the restored photos rather than trusting that it would.
 3. Confirm the restore works with only what is in B2 plus the git repo — no
    file that happens to still be on the machine.

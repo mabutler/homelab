@@ -123,7 +123,8 @@ moment. The correct form is:
 sudo sqlite3 /opt/appdata/vaultwarden/db.sqlite3 ".backup '/tmp/vw.sqlite3'"
 ```
 
-That becomes a pre-hook in the restic job at Phase 4.
+That is exactly what `homelab-backup`'s nightly pre-hook runs — see
+[Backup](#backup) below.
 
 ### Adding someone later
 
@@ -181,6 +182,27 @@ This is the one container where a stalled update is a security problem rather
 than staleness, because it is the only service that will have a public
 listener. "Confirm Vaultwarden's image is current" belongs in the quarterly
 ritual.
+
+---
+
+## Backup
+
+Captured nightly by `homelab-backup` — the **whole** `/opt/appdata/vaultwarden`
+directory, not just the database: the RSA keys in there are not regenerable,
+and without them a good database is unreadable. The live `db.sqlite3` is
+excluded from the snapshot; only the `.backup` dump represents it. See
+[`docs/backup-inventory.md`](../../docs/backup-inventory.md) for the exact
+mechanism.
+
+Restored automatically by `bootstrap/85-restore.sh` on a fresh install — the
+directory and the database both come back, no manual step needed. It only
+acts when `/opt/appdata/vaultwarden` does not already exist, so a live host is
+never touched.
+
+`vaultwarden.env` is not covered by this — see [The secrets
+file](#1-the-secrets-file) for why it needs a separate copy in your password
+manager, and note `bootstrap/85-restore.sh` restores it too if this host does
+not already have one.
 
 ---
 
