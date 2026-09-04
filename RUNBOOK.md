@@ -1,13 +1,9 @@
 # RUNBOOK — fidelacchius
 
-Operating notes for the host this repository provisions. Written for whoever
-is reading it at 11pm with something broken, which may well be you having
-forgotten all of it.
+Operating notes for the host this repository provisions.
 
-Current as of Phase 3: `bootstrap/` complete; Vaultwarden live and public via
-Funnel; Immich, Mealie, Vikunja, Memos and Homepage on the tailnet;
-nightly restic backups to B2. See
-[Not done yet](#not-done-yet).
+Currently in Phase 3 — see [Applications](#applications) for what is deployed
+and [Not done yet](#not-done-yet) for what is outstanding.
 
 ---
 
@@ -409,36 +405,9 @@ all — it exists only on the `homepage` network.
 ## Pinned images
 
 Most containers carry `AutoUpdate=registry` and are updated by the daily
-`podman-auto-update` timer. **Immich's database is pinned to an exact tag**, and
-the tag is doing real work:
-
-```
-ghcr.io/immich-app/postgres:14-vectorchord0.4.3-pgvectors0.2.0
-```
-
-It names the PostgreSQL major *and* both extension versions, so auto-update can
-only ever deliver a rebuild of that same combination — a patched 14.x with the
-same extensions, needing no migration. That is precisely what makes
-`AutoUpdate=registry` safe to leave on it.
-
-What the pin prevents is an update that **needs a step an image swap cannot
-perform**:
-
-- A **PostgreSQL major** bump changes the on-disk format. The new binary
-  refuses to start against the old data directory — it fails closed rather than
-  corrupting anything, but the service is down until you run `pg_upgrade` or a
-  dump/restore. Postgres does not downgrade.
-- A **VectorChord** bump needs SQL afterwards:
-  ```sql
-  ALTER EXTENSION vchord UPDATE;
-  REINDEX INDEX face_index;
-  REINDEX INDEX clip_index;
-  ```
-  Skip it and the database starts, serves, and has stale indexes — nothing
-  complains, which is the worst shape of failure.
-
-Immich supports PostgreSQL 14 through 19, so a pinned 14 will not be outrun by
-server updates for years. But a pin nobody watches is just a stale version, so:
+`podman-auto-update` timer. **Immich's database is pinned to an exact tag**
+instead — why, and what the pin prevents, is in
+[apps/immich/README.md#updates](apps/immich/README.md#updates).
 
 ```bash
 sudo ./tools/check-image-pins.sh          # compares our pin to Immich's current release
@@ -543,35 +512,19 @@ moment that costs nothing.
 
 ### The one public service
 
-Vaultwarden is the only thing reachable from outside the tailnet. Funnel is
-enabled per **port**, not per path, so 443 stays exclusively Vaultwarden:
-anything else ever mounted there becomes public with it. Other apps get a
-different `tailscale serve` port.
-
-Before opening the port, `deploy.sh` runs `apps/vaultwarden/funnel-guard.sh`,
-which vetoes on: `SIGNUPS_ALLOWED=true`, `ADMIN_TOKEN` set, or `DOMAIN` not
-matching this node's MagicDNS name. A veto is **not a deploy failure** — the
-tailnet mount still goes up, only the public door waits, and the next deploy
-after you fix the cause opens it.
-
-`tools/enable-funnel.sh` is the manual path for what is not a deploy:
+Vaultwarden is the only thing reachable from outside the tailnet. The
+mechanics — the per-port Funnel rule, `funnel-guard.sh`'s vetoes, and the
+gotchas — are covered in
+[apps/vaultwarden/README.md#the-public-door--funnel](apps/vaultwarden/README.md#the-public-door--funnel).
 
 ```bash
 sudo ./tools/enable-funnel.sh --off vaultwarden   # tailnet-only, temporarily
 sudo ./tools/enable-funnel.sh vaultwarden         # and back
 ```
 
-`--off` leaves `tailscale serve` alone, so tailnet access is unaffected. The
-next `deploy.sh` republishes, because `serve.conf` still says `FUNNEL=yes`.
-
 Adding a user means opening registration, and with Funnel live that window is
-open to the internet rather than the tailnet. Minutes, not days. The procedure,
-and the safer variant for someone who is already on the tailnet, are in
-[apps/vaultwarden/README.md](apps/vaultwarden/README.md#adding-someone-later).
-
-A port scan of the home IP will not show any of this — Funnel is an outbound
-tunnel and never touches the router. A clean scan is not evidence that
-Vaultwarden is private.
+open to the internet rather than the tailnet — see
+[apps/vaultwarden/README.md#adding-someone-later](apps/vaultwarden/README.md#adding-someone-later).
 
 ---
 

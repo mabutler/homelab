@@ -115,11 +115,9 @@ aur_install mergerfs
 # Naming the fstype "mergerfs" reaches mount.mergerfs directly. findmnt still
 # reports the mounted filesystem as fuse.mergerfs, because mergerfs sets that
 # subtype itself.
-if [[ -z "$DRY_RUN" ]]; then
-    command -v mount.mergerfs >/dev/null 2>&1 \
-        || [[ -x /sbin/mount.mergerfs || -x /usr/bin/mount.mergerfs ]] \
-        || die "mergerfs is installed but provides no mount.mergerfs helper — mount would fall through to the kernel fuse driver and reject the pool options"
-fi
+command -v mount.mergerfs >/dev/null 2>&1 \
+    || [[ -x /sbin/mount.mergerfs || -x /usr/bin/mount.mergerfs ]] \
+    || die "mergerfs is installed but provides no mount.mergerfs helper — mount would fall through to the kernel fuse driver and reject the pool options"
 
 POOL_OPTS="defaults,nofail,allow_other,cache.files=partial,dropcacheonclose=true"
 POOL_OPTS+=",category.create=mfs,minfreespace=20G,fsname=mergerfs"
@@ -174,7 +172,7 @@ else
     rm -f -- "$tmp_fstab"
 
     # Syntax-check what we just wrote, while the old copy is still one cp away.
-    if [[ -z "$DRY_RUN" ]] && ! findmnt --verify >/dev/null 2>&1; then
+    if ! findmnt --verify >/dev/null 2>&1; then
         warn "findmnt --verify is unhappy with the new $FSTAB:"
         findmnt --verify >&2 || true
         warn "the previous version is at ${FSTAB}.homelab.bak"
@@ -185,113 +183,109 @@ fi
 # ---------------------------------------------------------------------------
 # Mount
 # ---------------------------------------------------------------------------
-if [[ -z "$DRY_RUN" ]]; then
-    # `mount -a` decides "already mounted" by matching source AND target against
-    # the mount table. For the pool those do not match: fstab's source is the
-    # branch list, while mergerfs reports whatever `fsname=` says. So mount -a
-    # concluded the pool was not mounted and mounted it AGAIN, every run — this
-    # host reached a stack four deep before anything noticed.
-    #
-    # So exclude mergerfs from the sweep and mount the pool by target, which is
-    # unambiguous. `findmnt -M` is true if anything is mounted there at all.
-    log "mounting everything in fstab that is not already mounted"
-    mount -a -t nomergerfs \
-        || warn "mount -a reported a problem — the checks below will say which"
+# `mount -a` decides "already mounted" by matching source AND target against
+# the mount table. For the pool those do not match: fstab's source is the
+# branch list, while mergerfs reports whatever `fsname=` says. So mount -a
+# concluded the pool was not mounted and mounted it AGAIN, every run — this
+# host reached a stack four deep before anything noticed.
+#
+# So exclude mergerfs from the sweep and mount the pool by target, which is
+# unambiguous. `findmnt -M` is true if anything is mounted there at all.
+log "mounting everything in fstab that is not already mounted"
+mount -a -t nomergerfs \
+    || warn "mount -a reported a problem — the checks below will say which"
 
-    if findmnt -M "$POOL_MNT" >/dev/null 2>&1; then
-        dbg "$POOL_MNT already mounted"
-    else
-        log "mounting $POOL_MNT"
-        mount -- "$POOL_MNT" || warn "mounting the pool failed — see below"
-    fi
+if findmnt -M "$POOL_MNT" >/dev/null 2>&1; then
+    dbg "$POOL_MNT already mounted"
+else
+    log "mounting $POOL_MNT"
+    mount -- "$POOL_MNT" || warn "mounting the pool failed — see below"
 fi
 
 # ---------------------------------------------------------------------------
 # Verify the result, and be specific about what is wrong
 # ---------------------------------------------------------------------------
-if [[ -z "$DRY_RUN" ]]; then
-    bad_mounts=0
-    for s in "${DRIVE_SERIALS[@]}"; do
-        [[ "${DRIVE_ROLE[$s]}" == "ssd" ]] && continue
-        lbl="${DRIVE_LABEL[$s]}"
-        mnt="$(mountpoint_for "$lbl")"
-        # -f: first match only. findmnt prints one line per mount at a target,
-        # and a multi-line value silently breaks every comparison below.
-        src="$(findmnt -fno SOURCE -- "$mnt" 2>/dev/null || true)"
-        if [[ -z "$src" ]]; then
-            err "$lbl is not mounted at $mnt"
-            bad_mounts=$(( bad_mounts + 1 ))
-            continue
-        fi
-        found="$(blkid -s LABEL -o value -- "$src" 2>/dev/null || true)"
-        if [[ "$found" != "$lbl" ]]; then
-            err "$mnt holds label '$found', expected '$lbl'"
-            bad_mounts=$(( bad_mounts + 1 ))
-        fi
-    done
-    (( bad_mounts == 0 )) || die "$bad_mounts pool mount(s) wrong — not proceeding to SnapRAID"
-
-    # `nofail` is on the pool line too, which means a failed mergerfs mount is
-    # skipped by `mount -a` WITHOUT a non-zero exit — the option that stops a
-    # dead drive stranding the host at boot also swallows the one error worth
-    # reading. So do not just assert: ask for the mount directly, where the
-    # error is reported, and print it.
-    # Do NOT assert on an exact fstype string. What findmnt reports for a
-    # mergerfs mount is a mergerfs *version* detail, not a property of the pool:
-    # it has been "fuse.mergerfs" and it has been plain "mergerfs", and an
-    # upgrade flipping it turned a healthy pool into a hard failure here once.
-    #
-    # Assert what actually matters instead — that /mnt/pool is a mount at all,
-    # and that it is a mergerfs one rather than the SSD directory underneath.
-    # One line per mount at this target, so read them all: the count is itself
-    # a fact worth knowing, and taking [0] is what keeps the comparison sane.
-    mapfile -t pool_types < <(findmnt -no FSTYPE -- "$POOL_MNT" 2>/dev/null || true)
-    pool_fstype="${pool_types[0]:-}"
-    pool_depth="${#pool_types[@]}"
-    pool_source="$(findmnt -fno SOURCE -- "$POOL_MNT" 2>/dev/null || true)"
-    dbg "$POOL_MNT fstype=${pool_fstype:-<none>} source=${pool_source:-<none>} depth=$pool_depth"
-
-    pool_ok=0
-    case "${pool_fstype,,}" in
-        mergerfs|fuse.mergerfs)
-            pool_ok=1 ;;
-        fuse|fuse3)
-            # Older/odd builds report the generic fuse type. The source is then
-            # the branch list or our fsname=, either of which identifies it.
-            [[ "$pool_source" == *"${DATA_MNTS[0]}"* || "$pool_source" == "mergerfs" ]] \
-                && pool_ok=1 ;;
-    esac
-
-    if (( ! pool_ok )); then
-        err "$POOL_MNT is not a mergerfs mount${pool_fstype:+ — found $pool_fstype}"
-        err "mount -a passed over it silently (nofail). Retrying it directly:"
-        mount -v -- "$POOL_MNT" >&2 || true
-
-        # The two failures that actually happen here, both from the AUR build:
-        if ! command -v mount.mergerfs >/dev/null 2>&1; then
-            err "there is no mount.mergerfs helper on PATH — the package is not"
-            err "providing it:  paru -S mergerfs"
-        elif ! mount.mergerfs -V >/dev/null 2>&1; then
-            err "mount.mergerfs exists but will not run — usually a fuse3 soname"
-            err "bump since it was built. Rebuild it:  paru -S --rebuild mergerfs"
-        fi
-        die "pool did not assemble"
+bad_mounts=0
+for s in "${DRIVE_SERIALS[@]}"; do
+    [[ "${DRIVE_ROLE[$s]}" == "ssd" ]] && continue
+    lbl="${DRIVE_LABEL[$s]}"
+    mnt="$(mountpoint_for "$lbl")"
+    # -f: first match only. findmnt prints one line per mount at a target,
+    # and a multi-line value silently breaks every comparison below.
+    src="$(findmnt -fno SOURCE -- "$mnt" 2>/dev/null || true)"
+    if [[ -z "$src" ]]; then
+        err "$lbl is not mounted at $mnt"
+        bad_mounts=$(( bad_mounts + 1 ))
+        continue
     fi
-
-    # Stacking is not fatal — the top layer works and every layer is the same
-    # mergerfs — but it hides drives on unmount and is pure accumulated damage.
-    if (( pool_depth > 1 )); then
-        warn "$POOL_MNT is mounted $pool_depth times over, from repeated runs of this"
-        warn "script before it excluded mergerfs from 'mount -a'. Nothing is lost."
-        warn "Peel the extras off (the last unmount should leave one):"
-        warn "  sudo umount $POOL_MNT      # x$(( pool_depth - 1 ))"
-        warn "then re-run this script and the depth should read 1."
+    found="$(blkid -s LABEL -o value -- "$src" 2>/dev/null || true)"
+    if [[ "$found" != "$lbl" ]]; then
+        err "$mnt holds label '$found', expected '$lbl'"
+        bad_mounts=$(( bad_mounts + 1 ))
     fi
+done
+(( bad_mounts == 0 )) || die "$bad_mounts pool mount(s) wrong — not proceeding to SnapRAID"
 
-    findmnt -no TARGET,SOURCE,FSTYPE,SIZE,AVAIL "$POOL_MNT" >&2
-    for m in "${DATA_MNTS[@]}"; do
-        findmnt -no TARGET,SOURCE,SIZE,AVAIL "$m" >&2
-    done
+# `nofail` is on the pool line too, which means a failed mergerfs mount is
+# skipped by `mount -a` WITHOUT a non-zero exit — the option that stops a
+# dead drive stranding the host at boot also swallows the one error worth
+# reading. So do not just assert: ask for the mount directly, where the
+# error is reported, and print it.
+# Do NOT assert on an exact fstype string. What findmnt reports for a
+# mergerfs mount is a mergerfs *version* detail, not a property of the pool:
+# it has been "fuse.mergerfs" and it has been plain "mergerfs", and an
+# upgrade flipping it turned a healthy pool into a hard failure here once.
+#
+# Assert what actually matters instead — that /mnt/pool is a mount at all,
+# and that it is a mergerfs one rather than the SSD directory underneath.
+# One line per mount at this target, so read them all: the count is itself
+# a fact worth knowing, and taking [0] is what keeps the comparison sane.
+mapfile -t pool_types < <(findmnt -no FSTYPE -- "$POOL_MNT" 2>/dev/null || true)
+pool_fstype="${pool_types[0]:-}"
+pool_depth="${#pool_types[@]}"
+pool_source="$(findmnt -fno SOURCE -- "$POOL_MNT" 2>/dev/null || true)"
+dbg "$POOL_MNT fstype=${pool_fstype:-<none>} source=${pool_source:-<none>} depth=$pool_depth"
+
+pool_ok=0
+case "${pool_fstype,,}" in
+    mergerfs|fuse.mergerfs)
+        pool_ok=1 ;;
+    fuse|fuse3)
+        # Older/odd builds report the generic fuse type. The source is then
+        # the branch list or our fsname=, either of which identifies it.
+        [[ "$pool_source" == *"${DATA_MNTS[0]}"* || "$pool_source" == "mergerfs" ]] \
+            && pool_ok=1 ;;
+esac
+
+if (( ! pool_ok )); then
+    err "$POOL_MNT is not a mergerfs mount${pool_fstype:+ — found $pool_fstype}"
+    err "mount -a passed over it silently (nofail). Retrying it directly:"
+    mount -v -- "$POOL_MNT" >&2 || true
+
+    # The two failures that actually happen here, both from the AUR build:
+    if ! command -v mount.mergerfs >/dev/null 2>&1; then
+        err "there is no mount.mergerfs helper on PATH — the package is not"
+        err "providing it:  paru -S mergerfs"
+    elif ! mount.mergerfs -V >/dev/null 2>&1; then
+        err "mount.mergerfs exists but will not run — usually a fuse3 soname"
+        err "bump since it was built. Rebuild it:  paru -S --rebuild mergerfs"
+    fi
+    die "pool did not assemble"
 fi
+
+# Stacking is not fatal — the top layer works and every layer is the same
+# mergerfs — but it hides drives on unmount and is pure accumulated damage.
+if (( pool_depth > 1 )); then
+    warn "$POOL_MNT is mounted $pool_depth times over, from repeated runs of this"
+    warn "script before it excluded mergerfs from 'mount -a'. Nothing is lost."
+    warn "Peel the extras off (the last unmount should leave one):"
+    warn "  sudo umount $POOL_MNT      # x$(( pool_depth - 1 ))"
+    warn "then re-run this script and the depth should read 1."
+fi
+
+findmnt -no TARGET,SOURCE,FSTYPE,SIZE,AVAIL "$POOL_MNT" >&2
+for m in "${DATA_MNTS[@]}"; do
+    findmnt -no TARGET,SOURCE,SIZE,AVAIL "$m" >&2
+done
 
 ok "pool assembled at $POOL_MNT — next: bootstrap/50-snapraid.sh"

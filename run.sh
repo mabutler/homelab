@@ -15,7 +15,6 @@ usage: run.sh [options]
   --only NN[,NN]    run only these numbered steps (e.g. --only 40,50)
   --from NN         start at this step and run everything after it
   --to NN           stop after this step
-  --dry-run         print what would change without changing it
   -v, --verbose     report no-op steps as well as changes
   -h, --help        this
 
@@ -36,14 +35,13 @@ main() {
             --from=*)    from="${1#*=}" ;;
             --to)        to="${2:?--to needs a step number}"; shift ;;
             --to=*)      to="${1#*=}" ;;
-            --dry-run)   DRY_RUN=1 ;;
             -v|--verbose) VERBOSE=1 ;;
             -h|--help)   usage; return 0 ;;
             *)           usage >&2; die "unknown argument: $1" ;;
         esac
         shift
     done
-    export DRY_RUN VERBOSE
+    export VERBOSE
 
     local -a scripts=()
     local s
@@ -87,8 +85,6 @@ main() {
         warn "a kernel update has landed since boot. Daemons needing a new module"
         warn "will fail until you reboot."
     fi
-
-    [[ -n "$DRY_RUN" ]] && warn "dry run — nothing will be changed"
 
     local failed=''
     for s in "${selected[@]}"; do

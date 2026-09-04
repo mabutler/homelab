@@ -233,7 +233,7 @@ prune_orphans() {
         #
         # Only the name derived from the unit we just pruned, so this can never
         # reach a container belonging to something else.
-        if [[ "$base" == *.container && -z "$DRY_RUN" ]]; then
+        if [[ "$base" == *.container ]]; then
             svc="${base%.container}"
             if [[ "$(podman container inspect -f '{{.State.Running}}' "$svc" 2>/dev/null || true)" == "true" ]]; then
                 warn "$svc is still running with no unit behind it — stopping the container"
@@ -407,8 +407,6 @@ main() {
                 run systemctl start "$svc.service"
             fi
         done
-
-        [[ -n "$DRY_RUN" ]] && continue
 
         # Judge them all after starting them all: a database that is still
         # doing first-run initialisation would otherwise be declared broken

@@ -164,11 +164,6 @@ publish_app() {
     load_serve_conf "$dir" || { dbg "$app declares no serve.conf"; return 0; }
 
     require_cmd tailscale jq
-    if [[ -n "$DRY_RUN" ]]; then
-        log "would serve $SERVE_PATH -> $SERVE_TARGET${FUNNEL:+ (funnel=$FUNNEL)}"
-        return 0
-    fi
-
     tailscale status >/dev/null 2>&1 \
         || { warn "$app: not on the tailnet, cannot publish — run bootstrap/30-access.sh"; return 0; }
 

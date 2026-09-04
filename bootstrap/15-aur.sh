@@ -39,30 +39,24 @@ warn "paru is written in Rust, so this pulls the Rust toolchain to build it."
 warn "makepkg -r removes those build-only dependencies afterwards, so the"
 warn "host does not keep ~1.5 GB of compiler it will never use again."
 
-if [[ -n "$DRY_RUN" ]]; then
-    log "would clone and build paru as $ADMIN_USER"
-else
-    # A PKGBUILD is arbitrary code, which is exactly why makepkg refuses to run
-    # as root. Build as the admin user in a scratch directory they own; the
-    # NOPASSWD sudo rule from install/ lets makepkg call pacman to install the
-    # result without an interactive prompt.
-    build_dir="$(mktemp -d /tmp/aur-paru.XXXXXX)"
-    chown "$ADMIN_USER:$ADMIN_USER" "$build_dir"
+# A PKGBUILD is arbitrary code, which is exactly why makepkg refuses to run
+# as root. Build as the admin user in a scratch directory they own; the
+# NOPASSWD sudo rule from install/ lets makepkg call pacman to install the
+# result without an interactive prompt.
+build_dir="$(mktemp -d /tmp/aur-paru.XXXXXX)"
+chown "$ADMIN_USER:$ADMIN_USER" "$build_dir"
 
-    sudo -u "$ADMIN_USER" -H \
-        git clone --depth 1 https://aur.archlinux.org/paru.git "$build_dir/paru"
+sudo -u "$ADMIN_USER" -H \
+    git clone --depth 1 https://aur.archlinux.org/paru.git "$build_dir/paru"
 
-    # -s installs makedepends, -i installs the result, -r removes the
-    # makedepends again, -c cleans the build tree.
-    ( cd "$build_dir/paru" && sudo -u "$ADMIN_USER" -H makepkg -sirc --noconfirm )
+# -s installs makedepends, -i installs the result, -r removes the
+# makedepends again, -c cleans the build tree.
+( cd "$build_dir/paru" && sudo -u "$ADMIN_USER" -H makepkg -sirc --noconfirm )
 
-    rm -rf -- "$build_dir"
-fi
+rm -rf -- "$build_dir"
 
-if [[ -z "$DRY_RUN" ]]; then
-    command -v paru >/dev/null 2>&1 || die "paru did not install"
-    ok "paru $(paru --version 2>/dev/null | head -1)"
-fi
+command -v paru >/dev/null 2>&1 || die "paru did not install"
+ok "paru $(paru --version 2>/dev/null | head -1)"
 
 cat >&2 <<'EOF'
 

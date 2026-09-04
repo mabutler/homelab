@@ -26,9 +26,7 @@ load_host_conf
 # run.sh has to be enough to change a live host, without a reinstall.
 install_file etc/ssh/sshd_config.d/10-hardening.conf
 
-# Guarded on DRY_RUN as well: under a dry run the file was never written, so
-# validating and reloading would be acting on a change that did not happen.
-if (( INSTALL_CHANGED )) && [[ -z "$DRY_RUN" ]]; then
+if (( INSTALL_CHANGED )); then
     # Validate before asking sshd to adopt it. A syntactically bad drop-in that
     # sshd refuses to load leaves the running daemon on its old config until
     # something restarts it — and then you are locked out at the worst moment.
@@ -42,12 +40,10 @@ fi
 
 # Assert the effective config, not just that the file parses. A drop-in that is
 # never read parses perfectly.
-if [[ -z "$DRY_RUN" ]]; then
-    grep_output '^passwordauthentication[[:space:]]+no$' sshd -T \
-        || die "sshd still accepts password authentication"
-    grep_output '^permitrootlogin[[:space:]]+no$' sshd -T \
-        || die "sshd still permits root login"
-fi
+grep_output '^passwordauthentication[[:space:]]+no$' sshd -T \
+    || die "sshd still accepts password authentication"
+grep_output '^permitrootlogin[[:space:]]+no$' sshd -T \
+    || die "sshd still permits root login"
 
 # ---------------------------------------------------------------------------
 # Tailscale
@@ -139,9 +135,7 @@ in_multiplexer() {
     return 1
 }
 
-if [[ -n "$DRY_RUN" ]]; then
-    log "would join the tailnet as $TARGET_HOSTNAME (skipped in a dry run)"
-elif tailscale status >/dev/null 2>&1; then
+if tailscale status >/dev/null 2>&1; then
     dbg "already on the tailnet"
     # `tailscale set` is the idempotent half of `tailscale up`.
     run tailscale set --ssh=true --hostname="$TARGET_HOSTNAME"
@@ -167,15 +161,13 @@ elif tailscale status >/dev/null 2>&1; then
         warn "a login URL may print below — open it to approve the tag"
         run tailscale login --advertise-tags="$TAILSCALE_TAGS"
 
-        if [[ -z "$DRY_RUN" ]]; then
-            sleep 3
-            tailscale status >/dev/null 2>&1 \
-                || die "tailscale is unhealthy after tagging — check 'tailscale status'
+        sleep 3
+        tailscale status >/dev/null 2>&1 \
+            || die "tailscale is unhealthy after tagging — check 'tailscale status'
 and the admin console. The tag needs an owner in the policy file
 (tagOwners) before this node can claim it."
-            node_has_declared_tags \
-                || warn "the tag has not appeared yet — if a login URL printed above, approve it"
-        fi
+        node_has_declared_tags \
+            || warn "the tag has not appeared yet — if a login URL printed above, approve it"
     fi
 else
     log "joining the tailnet as $TARGET_HOSTNAME${TAILSCALE_TAGS:+ ($TAILSCALE_TAGS)}"
@@ -190,18 +182,16 @@ fi
 # ---------------------------------------------------------------------------
 # Verify both doors, while you still have a working session to fix them from
 # ---------------------------------------------------------------------------
-if [[ -z "$DRY_RUN" ]]; then
-    systemctl is-active --quiet sshd.service \
-        || die "sshd is not running"
-    systemctl is-active --quiet tailscaled.service \
-        || die "tailscaled is not running"
+systemctl is-active --quiet sshd.service \
+    || die "sshd is not running"
+systemctl is-active --quiet tailscaled.service \
+    || die "tailscaled is not running"
 
-    ts_ip="$(tailscale ip -4 2>/dev/null || true)"
-    if [[ -z "$ts_ip" ]]; then
-        warn "no tailnet address yet — the machine has not finished joining"
-    else
-        ok "tailnet address: $ts_ip"
-    fi
+ts_ip="$(tailscale ip -4 2>/dev/null || true)"
+if [[ -z "$ts_ip" ]]; then
+    warn "no tailnet address yet — the machine has not finished joining"
+else
+    ok "tailnet address: $ts_ip"
 fi
 
 cat >&2 <<EOF

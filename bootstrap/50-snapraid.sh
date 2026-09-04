@@ -130,18 +130,16 @@ run systemctl start snapraid-sync.timer snapraid-scrub.timer
 # Run it now rather than waiting for 03:00, so the array is protected today and
 # any configuration mistake surfaces while you are sitting here. On an empty
 # pool this takes seconds.
-if [[ -z "$DRY_RUN" ]]; then
-    if [[ -e "${parity_mnt}/snapraid.parity" ]]; then
-        dbg "parity file already exists"
-    else
-        log "first sync (fast — the pool is empty)"
-        run /usr/local/bin/snapraid-sync
-    fi
-
-    log "snapraid status"
-    snapraid --conf "$SNAPRAID_CONF" status >&2 || warn "snapraid status reported a problem"
-
-    systemctl list-timers --no-pager 'snapraid-*' >&2 || true
+if [[ -e "${parity_mnt}/snapraid.parity" ]]; then
+    dbg "parity file already exists"
+else
+    log "first sync (fast — the pool is empty)"
+    run /usr/local/bin/snapraid-sync
 fi
+
+log "snapraid status"
+snapraid --conf "$SNAPRAID_CONF" status >&2 || warn "snapraid status reported a problem"
+
+systemctl list-timers --no-pager 'snapraid-*' >&2 || true
 
 ok "SnapRAID configured — parity on $parity_mnt"

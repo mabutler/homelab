@@ -60,20 +60,7 @@ dbg() {
     printf '%s  . %s %s\n' "$_C_DIM" "$_C_RESET" "$*" >&2
 }
 
-# ---------------------------------------------------------------------------
-# Dry run
-# ---------------------------------------------------------------------------
-# DRY_RUN=1 makes run() print instead of execute. It is meaningful for
-# bootstrap/ (idempotent, re-runnable) and NOT for install/ — a dry run of a
-# partitioning script cannot report what the next step would have found, so
-# install/ scripts do not honour it.
-DRY_RUN="${DRY_RUN:-}"
-
 run() {
-    if [[ -n "$DRY_RUN" ]]; then
-        printf '%sdry %s %s\n' "$_C_DIM" "$_C_RESET" "$*" >&2
-        return 0
-    fi
     "$@"
 }
 
