@@ -1,0 +1,17 @@
+# Managed by Ansible: fail2ban local jail configuration for sshd
+
+[DEFAULT]
+bantime = {{ fail2ban_bantime | default('1h') }}
+findtime = {{ fail2ban_findtime | default('10m') }}
+maxretry = {{ fail2ban_maxretry | default(3) }}
+backend = {{ fail2ban_backend | default('systemd') }}
+ignoreip = {{ fail2ban_ignoreip | default('127.0.0.1/8 ::1 192.168.4.0/24') }}
+
+[sshd]
+enabled = true
+port = {{ ssh_port | default(22) }}
+mode = aggressive
+backend = {{ fail2ban_backend | default('systemd') }}
+maxretry = {{ fail2ban_maxretry | default(3) }}
+findtime = {{ fail2ban_findtime | default('10m') }}
+bantime = {{ fail2ban_bantime | default('1h') }}

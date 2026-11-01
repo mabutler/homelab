@@ -1,0 +1,12 @@
+---
+# tasks file for common_packages role
+
+- name: Install core administration and troubleshooting packages
+  ansible.builtin.shell:
+    cmd: "pacman -Q {{ item }} >/dev/null 2>&1 || pacman -S --needed --noconfirm {{ item }}"
+  loop: "{{ common_packages }}"
+  register: pkg_install
+  changed_when: "'is up to date' not in pkg_install.stdout and pkg_install.stdout != ''"
+  tags:
+    - common
+    - packages

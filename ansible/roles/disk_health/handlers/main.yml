@@ -1,0 +1,7 @@
+---
+# handlers file for disk_health
+
+- name: Restart smartd
+  ansible.builtin.service:
+    name: smartd
+    state: restarted

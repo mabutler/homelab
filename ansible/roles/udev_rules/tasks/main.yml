@@ -1,0 +1,14 @@
+---
+# tasks file for udev_rules role
+
+- name: Deploy persistent homelab peripherals udev rules
+  ansible.builtin.template:
+    src: 99-homelab-peripherals.rules.j2
+    dest: "{{ udev_peripherals_rules_path | default('/etc/udev/rules.d/99-homelab-peripherals.rules') }}"
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Reload udev rules
+  tags:
+    - udev
+    - hardware

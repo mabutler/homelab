@@ -1,0 +1,65 @@
+---
+# tasks file for ssh_hardening role
+
+- name: Install fail2ban package
+  ansible.builtin.shell:
+    cmd: "pacman -Q fail2ban >/dev/null 2>&1 || pacman -S --needed --noconfirm fail2ban"
+  register: fail2ban_install
+  changed_when: "'is up to date' not in fail2ban_install.stdout and fail2ban_install.stdout != ''"
+  tags:
+    - security
+    - ssh
+
+- name: Ensure OpenSSH configuration drop-in directory exists
+  ansible.builtin.file:
+    path: /etc/ssh/sshd_config.d
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  tags:
+    - security
+    - ssh
+
+- name: Deploy OpenSSH hardening configuration drop-in
+  ansible.builtin.template:
+    src: sshd_hardening.conf.j2
+    dest: "{{ sshd_config_dropin_path | default('/etc/ssh/sshd_config.d/10-hardening.conf') }}"
+    owner: root
+    group: root
+    mode: '0600'
+    validate: '/usr/bin/sshd -t -f %s'
+  notify: Reload sshd
+  tags:
+    - security
+    - ssh
+
+- name: Deploy fail2ban jail configuration
+  ansible.builtin.template:
+    src: jail.local.j2
+    dest: /etc/fail2ban/jail.local
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Restart fail2ban
+  tags:
+    - security
+    - ssh
+
+- name: Ensure fail2ban service is enabled and started
+  ansible.builtin.service:
+    name: fail2ban
+    enabled: true
+    state: started
+  tags:
+    - security
+    - ssh
+
+- name: Ensure sshd service is enabled and started
+  ansible.builtin.service:
+    name: sshd
+    enabled: true
+    state: started
+  tags:
+    - security
+    - ssh

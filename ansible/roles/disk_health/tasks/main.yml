@@ -1,0 +1,32 @@
+---
+# tasks file for disk_health role
+
+- name: Install smartmontools package
+  ansible.builtin.shell:
+    cmd: "pacman -Q smartmontools >/dev/null 2>&1 || pacman -S --needed --noconfirm smartmontools"
+  register: smartmontools_install
+  changed_when: "'is up to date' not in smartmontools_install.stdout and smartmontools_install.stdout != ''"
+  tags:
+    - diagnostics
+    - disk
+
+- name: Deploy smartd configuration
+  ansible.builtin.template:
+    src: smartd.conf.j2
+    dest: /etc/smartd.conf
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Restart smartd
+  tags:
+    - diagnostics
+    - disk
+
+- name: Ensure smartd service is enabled and started
+  ansible.builtin.service:
+    name: smartd
+    enabled: true
+    state: started
+  tags:
+    - diagnostics
+    - disk

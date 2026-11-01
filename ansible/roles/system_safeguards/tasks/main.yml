@@ -1,0 +1,63 @@
+---
+# tasks file for system_safeguards role
+
+- name: Deploy systemd-oomd configuration
+  ansible.builtin.template:
+    src: oomd.conf.j2
+    dest: /etc/systemd/oomd.conf
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Restart systemd-oomd
+  tags:
+    - diagnostics
+    - safeguards
+    - oomd
+
+- name: Ensure systemd-journald drop-in directory exists
+  ansible.builtin.file:
+    path: /etc/systemd/journald.conf.d
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  tags:
+    - diagnostics
+    - safeguards
+    - journald
+
+- name: Deploy systemd-journald retention drop-in configuration
+  ansible.builtin.template:
+    src: journald.conf.j2
+    dest: /etc/systemd/journald.conf.d/00-retention.conf
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Restart systemd-journald
+  tags:
+    - diagnostics
+    - safeguards
+    - journald
+
+- name: Ensure systemd-oomd service is enabled and started
+  ansible.builtin.service:
+    name: systemd-oomd
+    enabled: true
+    state: started
+  tags:
+    - diagnostics
+    - safeguards
+    - oomd
+
+- name: Ensure persistent journal directory exists
+  ansible.builtin.file:
+    path: /var/log/journal
+    state: directory
+    owner: root
+    group: systemd-journal
+    mode: '2755'
+  notify: Restart systemd-journald
+  tags:
+    - diagnostics
+    - safeguards
+    - journald

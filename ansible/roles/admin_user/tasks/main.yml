@@ -1,0 +1,45 @@
+---
+# tasks file for admin_user role
+
+- name: Ensure prerequisite groups exist
+  ansible.builtin.group:
+    name: "{{ item }}"
+    state: present
+  loop: "{{ admin_groups }}"
+  tags:
+    - admin
+    - sudo
+
+- name: Manage administrative operator account
+  ansible.builtin.user:
+    name: "{{ admin_username }}"
+    shell: "{{ admin_shell }}"
+    groups: "{{ admin_groups }}"
+    append: true
+    state: present
+    create_home: true
+  tags:
+    - admin
+
+- name: Configure authorized SSH keys for admin operator
+  ansible.posix.authorized_key:
+    user: "{{ admin_username }}"
+    key: "{{ item }}"
+    state: present
+  loop: "{{ vault_admin_authorized_keys | default([]) }}"
+  when: vault_admin_authorized_keys is defined and (vault_admin_authorized_keys | length > 0)
+  tags:
+    - admin
+    - ssh
+
+- name: Deploy passwordless sudoers drop-in for wheel group
+  ansible.builtin.template:
+    src: sudoers_wheel.j2
+    dest: /etc/sudoers.d/10-wheel-nopasswd
+    owner: root
+    group: root
+    mode: '0440'
+    validate: '/usr/sbin/visudo -cf %s'
+  tags:
+    - admin
+    - sudo

@@ -1,0 +1,32 @@
+---
+# tasks file for time_sync role
+
+- name: Install chrony package
+  ansible.builtin.shell:
+    cmd: "pacman -Q chrony >/dev/null 2>&1 || pacman -S --needed --noconfirm chrony"
+  register: chrony_install
+  changed_when: "'is up to date' not in chrony_install.stdout and chrony_install.stdout != ''"
+  tags:
+    - diagnostics
+    - time
+
+- name: Deploy chrony configuration
+  ansible.builtin.template:
+    src: chrony.conf.j2
+    dest: /etc/chrony.conf
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Restart chronyd
+  tags:
+    - diagnostics
+    - time
+
+- name: Ensure chronyd service is enabled and started
+  ansible.builtin.service:
+    name: chronyd
+    enabled: true
+    state: started
+  tags:
+    - diagnostics
+    - time

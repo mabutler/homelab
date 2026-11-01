@@ -1,0 +1,4 @@
+# Managed by Ansible: systemd-journald retention and storage configuration
+[Journal]
+Storage={{ journald_storage | default('persistent') }}
+SystemMaxUse={{ journald_system_max_use | default('2G') }}

@@ -1,0 +1,11 @@
+# Managed by Ansible: Chrony NTP configuration
+
+server {{ chrony_pool | default('2.arch.pool.ntp.org iburst') }}
+
+driftfile /var/lib/chrony/drift
+makestep 1.0 3
+{% if chrony_rtcsync | default(true) %}
+rtcsync
+{% endif %}
+
+logdir /var/log/chrony

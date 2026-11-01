@@ -1,0 +1,14 @@
+# Managed by Ansible: Persistent hardware peripheral udev rules
+
+# Silicon Labs CP210x / Zooz / Aeotec Z-Wave USB Stick
+SUBSYSTEM=="tty", ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", SYMLINK+="zwave", SYMLINK+="serial/by-id/usb-zwave-controller", MODE="0660", GROUP="uucp"
+
+# Google Coral Edge TPU (USB uninitialized & runtime)
+SUBSYSTEM=="usb", ATTRS{idVendor}=="1a6e", ATTRS{idProduct}=="089a", MODE="0660", GROUP="uucp"
+SUBSYSTEM=="usb", ATTRS{idVendor}=="18d1", ATTRS{idProduct}=="9302", MODE="0660", GROUP="uucp"
+
+# Google Coral Edge TPU (PCIe / M.2 Apex driver)
+KERNEL=="apex_[0-9]*", MODE="0660", GROUP="uucp"
+
+# Sunshine / Remote Input Subsystem
+KERNEL=="uinput", SUBSYSTEM=="misc", MODE="0660", GROUP="input"

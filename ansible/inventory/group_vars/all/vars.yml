@@ -1,0 +1,70 @@
+---
+# Global non-sensitive variables and hardware defaults for homelab2
+
+# Base Packages
+common_packages:
+  - vim
+  - tmux
+  - htop
+  - git
+  - curl
+  - jq
+
+# Administrative Operator
+admin_username: "admin"
+admin_shell: "/bin/bash"
+admin_groups:
+  - wheel
+  - uucp
+  - input
+  - video
+
+# SSH Hardening & Security
+ssh_port: 22
+sshd_config_dropin_path: "/etc/ssh/sshd_config.d/10-hardening.conf"
+ssh_max_auth_tries: 3
+ssh_ciphers:
+  - chacha20-poly1305@openssh.com
+  - aes256-gcm@openssh.com
+  - aes128-gcm@openssh.com
+
+fail2ban_backend: "systemd"
+fail2ban_maxretry: 3
+fail2ban_findtime: "10m"
+fail2ban_bantime: "1h"
+fail2ban_ignoreip: "127.0.0.1/8 ::1 192.168.4.0/24"
+
+# Time Synchronization (chrony)
+chrony_pool: "2.arch.pool.ntp.org iburst"
+chrony_rtcsync: true
+
+# Disk Diagnostics (smartmontools / smartd)
+smartd_scan_options: "DEVICESCAN -a -o on -S on -s (S/../.././02|L/../../6/03) -H -C 197+ -U 198+ -W 4,45,55"
+
+# System Safeguards (systemd-oomd & journald)
+oomd_swap_used_limit: "90%"
+oomd_default_memory_pressure_limit: "80%"
+journald_storage: "persistent"
+journald_system_max_use: "2G"
+
+# Peripheral Hardware Rules (udev)
+udev_peripherals_rules_path: "/etc/udev/rules.d/99-homelab-peripherals.rules"
+
+# Network & Remote Access (Phase 3)
+tailscale_enabled: true
+tailscale_accept_routes: true
+tailscale_advertise_exit_node: false
+
+firewall_enabled: true
+firewall_allowed_subnets:
+  - "192.168.4.0/24"
+firewall_allowed_tcp_ports:
+  - 22
+  - 80
+  - 443
+firewall_allowed_udp_ports:
+  - 41641
+
+caddy_enabled: true
+caddy_conf_dir: "/etc/caddy/conf.d"
+

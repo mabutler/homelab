@@ -1,0 +1,12 @@
+---
+# handlers file for system_safeguards
+
+- name: Restart systemd-oomd
+  ansible.builtin.service:
+    name: systemd-oomd
+    state: restarted
+
+- name: Restart systemd-journald
+  ansible.builtin.service:
+    name: systemd-journald
+    state: restarted

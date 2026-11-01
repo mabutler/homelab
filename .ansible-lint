@@ -1,0 +1,12 @@
+---
+# .ansible-lint configuration
+profile: production
+
+exclude_paths:
+  - .git/
+  - .specify/
+  - specs/
+  - scripts/
+
+warn_list:
+  - experimental

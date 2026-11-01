@@ -1,0 +1,5 @@
+# Managed by Ansible: systemd-oomd configuration
+[OOM]
+SwapUsedLimit={{ oomd_swap_used_limit | default('90%') }}
+DefaultMemoryPressureLimit={{ oomd_default_memory_pressure_limit | default('80%') }}
+DefaultMemoryPressureDurationSec=20s
