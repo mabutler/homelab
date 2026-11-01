@@ -1,3 +1,14 @@
+<!--
+Sync Impact Report:
+- Version Change: 1.1.0 -> 1.2.0
+- Modified Principles:
+  - III. Automated Verification & Acceptance Gates (Exempted early bootstrap phases prior to full network setup from network-dependent telemetry requirements, restricting gate to local health assertions)
+  - V. Disaster Recovery & Backup by Design (Exempted early bootstrap phases prior to full network setup from backup/snapshot verification requirements until network access is established)
+- Modified Sections:
+  - Workflow & Quality Gates (Updated Continuous Backup & Telemetry Verification Gates to exempt early phases prior to full network setup)
+- Rationale: Materially amended operational gates to permit early bootstrap phases prior to full network setup to skip backup and telemetry requirements, recognizing that meaningful backup destinations and observability systems cannot function without network access.
+-->
+
 # homelab2 Constitution
 
 ## Core Principles
@@ -28,10 +39,19 @@ No service, configuration, or infrastructure component is complete without autom
 Every deployment MUST define explicit health assertions, smoke tests, or status checks (e.g.,
 systemd unit active status, HTTP endpoint response, socket connectivity, mount accessibility).
 Automated tasks MUST verify that target states are live and functional before declaring completion,
-failing fast with actionable error messages on stderr.
+failing fast with actionable error messages on stderr. Early infrastructure phases prior to full
+network setup (e.g., Phase 1 live bootstrap and base OS installation) are EXEMPT from telemetry
+and observability verification gates; in these phases, verification is restricted to local health
+assertions (e.g., systemd unit active status, local log sinks, exit status). Once full network
+connectivity is operational (Phase 3 onward), telemetry and observability mechanisms (systemd unit
+monitoring, structured journal logging, metric endpoints, or healthcheck pingers) MUST be confirmed
+operational within each subsequent phase before declaring that phase complete. For Phase 5
+(application platform), each individual application MUST verify its health check assertion and
+telemetry integration before that application can be declared complete.
 
-*Rationale: Silent failures and partial provisioning corrupt homelab reliability. Automated
-acceptance tests confirm end-to-end functionality immediately upon convergence.*
+*Rationale: Silent failures and partial provisioning corrupt homelab reliability. Meaningful
+telemetry requires network connectivity, so early standalone bootstrap phases are exempt, but
+continuous telemetry verification is strictly enforced as soon as network access is established.*
 
 ### IV. Zero Cleartext Secrets & Isolated Configuration
 Sensitive parameters—including passwords, tokens, private keys, API credentials, and encryption
@@ -49,10 +69,19 @@ Every stateful service, configuration directory, and persistent dataset MUST def
 backup schedule and a verified restoration procedure. Backup artifacts MUST be tested periodically
 for integrity. An untested backup MUST be considered non-existent. Disaster recovery procedures
 MUST allow recreating services on clean hardware or VMs using only the version-controlled repository
-and off-host backup stores.
+and off-host backup stores. Early infrastructure phases prior to full network setup (e.g., initial
+bootstrap and base OS installation prior to network configuration) are EXEMPT from backup and
+snapshot readiness verification gates, as meaningful off-host or centralized backups require network
+access. Once full network connectivity is operational (Phase 3 onward), backup coverage and
+verification MUST NOT be deferred to an end-of-project milestone: each subsequent infrastructure
+phase MUST confirm its backup and snapshot readiness before completion. For Phase 5 (application
+platform), each individual application MUST confirm its backup strategy (e.g., automated database
+dump, persistent volume snapshot, or documented exclusion policy) before that application can be
+declared complete.
 
-*Rationale: Hardware failures and configuration corruption are inevitable over time; verified
-recovery ensures low stress and zero data loss.*
+*Rationale: Hardware failures and configuration corruption are inevitable over time; requiring
+backup confirmation once network access is established eliminates blind spots without demanding
+impossible remote backup mechanics during early standalone bootstrap.*
 
 ### VI. Modular & Decoupled Architecture
 System components, roles, and applications MUST remain modular, loosely coupled, and independently
@@ -94,6 +123,13 @@ tinkering or fragile maintenance chores.*
 - **Linting & Pre-flight Validation**: All scripts and configuration files MUST pass automated
   linting (e.g., `ansible-lint`, `shellcheck`, syntax validation) before merging or running in
   production.
+- **Continuous Backup & Telemetry Verification Gates**: Once full network connectivity and remote
+  access are established (Phase 3 onward), no infrastructure phase is complete until its backup
+  posture (snapshot coverage, restore verification) and telemetry integrations (health checks,
+  logging, metrics) are verified live. Early infrastructure bootstrap phases prior to full network
+  setup are exempt from backup and telemetry gates, requiring only local health checks and exit code
+  verification. In Phase 5 (application platform), this gate applies at per-application granularity:
+  each individual application MUST confirm both its backup and telemetry before being declared complete.
 - **Version Control & Documentation**: Every change MUST be committed with a descriptive git
   commit message. Operational procedures and recovery steps MUST be documented alongside code.
 
@@ -113,4 +149,4 @@ Core Principles and Operational Standards defined herein.
 - **Compliance Enforcement**: All Spec Kit artifacts (`spec.md`, `plan.md`, `tasks.md`) and code
   reviews MUST explicitly reference and verify adherence to these principles prior to implementation.
 
-**Version**: 1.0.0 | **Ratified**: 2026-10-11 | **Last Amended**: 2026-10-11
+**Version**: 1.2.0 | **Ratified**: 2026-10-11 | **Last Amended**: 2026-10-12
