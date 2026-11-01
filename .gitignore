@@ -1,0 +1,16 @@
+# Universal
+.DS_Store
+Thumbs.db
+*.tmp
+*.swp
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# Sensitive files / secrets
+secrets/*.key
+secrets/*.id_ed25519
+!secrets/*.pub
+!secrets/.gitkeep

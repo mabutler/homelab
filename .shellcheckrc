@@ -1,0 +1,7 @@
+# ShellCheck configuration for homelab2 bootstrap installer
+# Treat all scripts as bash
+shell=bash
+
+# Disable external sourcing warnings (SC1090, SC1091) and exported library vars (SC2034)
+disable=SC1090,SC1091,SC2034
+
