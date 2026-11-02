@@ -1,0 +1,92 @@
+---
+# Tasks for storage_layout
+
+- name: Install foundational storage filesystem packages
+  community.general.pacman:
+    name: "{{ storage_foundational_packages }}"
+    state: present
+  tags:
+    - storage_layout
+    - packages
+
+- name: Ensure storage system group exists
+  ansible.builtin.group:
+    name: "{{ storage_group }}"
+    gid: "{{ storage_gid }}"
+    state: present
+  tags:
+    - storage_layout
+    - user_group
+
+- name: Ensure admin user belongs to storage group
+  ansible.builtin.user:
+    name: "{{ storage_admin_user }}"
+    groups:
+      - "{{ storage_group }}"
+    append: true
+  tags:
+    - storage_layout
+    - user_group
+
+- name: Create base mount directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - /mnt/disks
+    - /mnt/disks/parity1
+  tags:
+    - storage_layout
+
+- name: Create and configure data disk mount directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ storage_admin_user }}"
+    group: "{{ storage_group }}"
+    mode: "2775"
+  loop:
+    - /mnt/disks/data1
+    - /mnt/disks/data2
+  tags:
+    - storage_layout
+
+- name: Mount physical storage disks by UUID in /etc/fstab
+  ansible.posix.mount:
+    path: "{{ item.mount_point }}"
+    src: "UUID={{ item.uuid }}"
+    fstype: "{{ item.filesystem }}"
+    opts: "{{ item.options | default('defaults,noatime,nofail,x-systemd.device-timeout=10s') }}"
+    dump: "{{ item.dump | default(0) }}"
+    passno: "{{ item.passno | default(2) }}"
+    state: mounted
+  loop: "{{ storage_disks }}"
+  when: storage_disks is defined
+  tags:
+    - storage_layout
+    - mounts
+
+- name: Configure Fast NVMe app tier permissions on /opt/services
+  ansible.builtin.file:
+    path: /opt/services
+    state: directory
+    owner: "{{ storage_admin_user }}"
+    group: "{{ storage_group }}"
+    mode: "0775"
+  tags:
+    - storage_layout
+    - tiers
+
+- name: Configure isolated scratch tier permissions on /mnt/scratch
+  ansible.builtin.file:
+    path: /mnt/scratch
+    state: directory
+    owner: "{{ storage_admin_user }}"
+    group: "{{ storage_group }}"
+    mode: "2775"
+  tags:
+    - storage_layout
+    - tiers

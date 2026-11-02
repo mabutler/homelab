@@ -67,3 +67,9 @@ firewall_allowed_udp_ports:
 
 caddy_enabled: true
 caddy_conf_dir: "/etc/caddy/conf.d"
+
+# Storage & Data Resiliency (Phase 4)
+storage_group: "storage"
+storage_gid: 1001
+snapraid_diff_deletion_threshold: 50
+

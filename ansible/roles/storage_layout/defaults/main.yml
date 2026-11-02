@@ -1,0 +1,18 @@
+---
+# Defaults for role storage_layout
+storage_group: "storage"
+storage_gid: 1001
+storage_admin_user: "admin"
+
+storage_base_directories:
+  - "/mnt/disks/data1"
+  - "/mnt/disks/data2"
+  - "/mnt/disks/parity1"
+  - "/mnt/storage"
+  - "/mnt/scratch"
+  - "/opt/services"
+
+storage_foundational_packages:
+  - fuse3
+  - e2fsprogs
+  - xfsprogs

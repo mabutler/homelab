@@ -1,0 +1,10 @@
+[Unit]
+Description=SnapRAID Daily Sync Runner
+ConditionACPower=true
+After=mnt-storage.mount
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/snapraid-runner.sh
+StandardOutput=journal
+StandardError=journal

@@ -1,0 +1,122 @@
+---
+# Tasks for snapraid
+
+- name: Check if snapraid is installed
+  ansible.builtin.command:
+    cmd: "pacman -Q snapraid"
+  register: snapraid_pkg_check
+  failed_when: false
+  changed_when: false
+  tags:
+    - snapraid
+    - packages
+
+- name: Install snapraid package from AUR if missing
+  ansible.builtin.shell:
+    cmd: >
+      mkdir -p /tmp/aur-snapraid &&
+      cd /tmp/aur-snapraid &&
+      git clone https://aur.archlinux.org/snapraid.git . &&
+      makepkg -s --noconfirm &&
+      pacman -U --noconfirm *.pkg.tar.zst &&
+      cd / &&
+      rm -rf /tmp/aur-snapraid
+  when: snapraid_pkg_check.rc != 0
+  changed_when: true
+  tags:
+    - snapraid
+    - packages
+
+- name: Deploy SnapRAID configuration file /etc/snapraid.conf
+  ansible.builtin.template:
+    src: snapraid.conf.j2
+    dest: /etc/snapraid.conf
+    owner: root
+    group: root
+    mode: "0644"
+  tags:
+    - snapraid
+    - config
+
+- name: Deploy SnapRAID safety runner script
+  ansible.builtin.template:
+    src: snapraid-runner.sh.j2
+    dest: /usr/local/bin/snapraid-runner.sh
+    owner: root
+    group: root
+    mode: "0755"
+  tags:
+    - snapraid
+    - runner
+
+- name: Deploy SnapRAID systemd sync service
+  ansible.builtin.template:
+    src: snapraid-sync.service.j2
+    dest: /etc/systemd/system/snapraid-sync.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Systemd daemon-reload
+  tags:
+    - snapraid
+    - systemd
+
+- name: Deploy SnapRAID systemd sync timer
+  ansible.builtin.template:
+    src: snapraid-sync.timer.j2
+    dest: /etc/systemd/system/snapraid-sync.timer
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Systemd daemon-reload
+    - Restart snapraid-sync timer
+  tags:
+    - snapraid
+    - systemd
+
+- name: Deploy SnapRAID systemd scrub service
+  ansible.builtin.template:
+    src: snapraid-scrub.service.j2
+    dest: /etc/systemd/system/snapraid-scrub.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Systemd daemon-reload
+  tags:
+    - snapraid
+    - systemd
+
+- name: Deploy SnapRAID systemd scrub timer
+  ansible.builtin.template:
+    src: snapraid-scrub.timer.j2
+    dest: /etc/systemd/system/snapraid-scrub.timer
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Systemd daemon-reload
+    - Restart snapraid-scrub timer
+  tags:
+    - snapraid
+    - systemd
+
+- name: Flush handlers to ensure units are recognized
+  ansible.builtin.meta: flush_handlers
+  tags:
+    - snapraid
+    - systemd
+
+- name: Ensure SnapRAID systemd timers are enabled and started
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+  loop:
+    - snapraid-sync.timer
+    - snapraid-scrub.timer
+  tags:
+    - snapraid
+    - systemd

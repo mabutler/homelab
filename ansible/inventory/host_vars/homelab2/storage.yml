@@ -1,0 +1,42 @@
+---
+# Storage disk UUID mapping and hardware configuration for homelab2
+# UUIDs must be standard 128-bit hex strings assigned by mkfs.
+# Roles must be one of: data, parity, scratch.
+# Filesystems must be one of: ext4, xfs.
+
+storage_disks:
+  - name: "data1"
+    uuid: "95f2628d-5e79-4c1d-ae23-1ab3dbd679a2"
+    mount_point: "/mnt/disks/data1"
+    role: "data"
+    filesystem: "ext4"
+    options: "defaults,noatime,nofail,x-systemd.device-timeout=10s"
+    dump: 0
+    passno: 2
+
+  - name: "data2"
+    uuid: "23efe79a-5227-40fb-9755-b31cb038f44b"
+    mount_point: "/mnt/disks/data2"
+    role: "data"
+    filesystem: "ext4"
+    options: "defaults,noatime,nofail,x-systemd.device-timeout=10s"
+    dump: 0
+    passno: 2
+
+  - name: "parity1"
+    uuid: "4ca6eb19-5e0a-414b-9ede-93744d99b7d8"
+    mount_point: "/mnt/disks/parity1"
+    role: "parity"
+    filesystem: "ext4"
+    options: "defaults,noatime,nofail,x-systemd.device-timeout=10s"
+    dump: 0
+    passno: 2
+
+  - name: "scratch"
+    uuid: "63d89789-4ade-47a2-95db-2b164d810e17"
+    mount_point: "/mnt/scratch"
+    role: "scratch"
+    filesystem: "ext4"
+    options: "defaults,noatime,nofail,x-systemd.device-timeout=10s"
+    dump: 0
+    passno: 2

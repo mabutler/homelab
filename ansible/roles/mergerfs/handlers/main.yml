@@ -1,0 +1,11 @@
+---
+# Handlers for mergerfs
+
+- name: Systemd daemon-reload
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: Remount mergerfs pool
+  ansible.builtin.systemd:
+    name: mnt-storage.mount
+    state: restarted

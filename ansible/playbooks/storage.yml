@@ -1,0 +1,23 @@
+---
+- name: Homelab2 Phase 4 Storage Pooling & Data Resiliency
+  hosts: homelab_nodes
+  become: true
+  gather_facts: true
+
+  roles:
+    - role: storage_layout
+      tags:
+        - storage
+        - storage_layout
+
+    - role: mergerfs
+      tags:
+        - storage
+        - mergerfs
+        - pool
+
+    - role: snapraid
+      tags:
+        - storage
+        - snapraid
+        - parity

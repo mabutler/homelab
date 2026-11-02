@@ -1,0 +1,17 @@
+# Parity Disk Location(s)
+parity {{ snapraid_parity_file }}
+
+# Redundant Content Files (at least 1 on OS drive, 1 on each data drive)
+{% for content in snapraid_content_files %}
+content {{ content }}
+{% endfor %}
+
+# Monitored Data Disks
+{% for disk in snapraid_data_disks %}
+data {{ disk.name }} {{ disk.path }}
+{% endfor %}
+
+# Excluded Files and Folders
+{% for exclude in snapraid_excludes %}
+exclude {{ exclude }}
+{% endfor %}

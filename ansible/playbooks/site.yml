@@ -98,3 +98,20 @@
         - ingress
         - caddy
         - proxy
+
+    - role: storage_layout
+      tags:
+        - storage
+        - storage_layout
+
+    - role: mergerfs
+      tags:
+        - storage
+        - mergerfs
+        - pool
+
+    - role: snapraid
+      tags:
+        - storage
+        - snapraid
+        - parity

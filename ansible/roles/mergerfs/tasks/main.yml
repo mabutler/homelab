@@ -1,0 +1,90 @@
+---
+# Tasks for mergerfs
+
+- name: Check if mergerfs is installed
+  ansible.builtin.command:
+    cmd: "pacman -Q mergerfs"
+  register: mergerfs_pkg_check
+  failed_when: false
+  changed_when: false
+  tags:
+    - mergerfs
+    - packages
+
+- name: Install mergerfs package from AUR if missing
+  ansible.builtin.shell:
+    cmd: >
+      mkdir -p /tmp/aur-mergerfs &&
+      cd /tmp/aur-mergerfs &&
+      git clone https://aur.archlinux.org/mergerfs-bin.git . &&
+      makepkg -s --noconfirm &&
+      pacman -U --noconfirm *.pkg.tar.zst &&
+      cd / &&
+      rm -rf /tmp/aur-mergerfs
+  when: mergerfs_pkg_check.rc != 0
+  changed_when: true
+  tags:
+    - mergerfs
+    - packages
+
+- name: Ensure mount.fuse.mergerfs symlink exists
+  ansible.builtin.file:
+    src: /usr/bin/mount.mergerfs
+    dest: /usr/bin/mount.fuse.mergerfs
+    state: link
+  tags:
+    - mergerfs
+
+- name: Ensure user_allow_other is enabled in /etc/fuse.conf
+  ansible.builtin.lineinfile:
+    path: /etc/fuse.conf
+    regexp: '^#?user_allow_other'
+    line: 'user_allow_other'
+    state: present
+  tags:
+    - mergerfs
+
+- name: Ensure MergerFS mount point directory exists
+  ansible.builtin.file:
+    path: "{{ mergerfs_mount_point }}"
+    state: directory
+    owner: "{{ mergerfs_owner_user }}"
+    group: "{{ mergerfs_owner_group }}"
+    mode: "{{ mergerfs_mode }}"
+  tags:
+    - mergerfs
+
+- name: Configure MergerFS pool mount in /etc/fstab
+  ansible.posix.mount:
+    path: "{{ mergerfs_mount_point }}"
+    src: "{{ mergerfs_branches }}"
+    fstype: "fuse.mergerfs"
+    opts: "{{ mergerfs_options }}"
+    dump: "0"
+    passno: "0"
+    state: mounted
+  notify:
+    - Systemd daemon-reload
+  tags:
+    - mergerfs
+    - mounts
+
+- name: Verify MergerFS pool mount is active in /proc/mounts
+  ansible.builtin.command:
+    cmd: "grep -E '^[^ ]+ {{ mergerfs_mount_point }} fuse\\.mergerfs ' /proc/mounts"
+  register: mergerfs_proc_check
+  changed_when: false
+  failed_when: mergerfs_proc_check.rc != 0
+  tags:
+    - mergerfs
+
+- name: Enforce ownership and setgid permissions on /mnt/storage
+  ansible.builtin.file:
+    path: "{{ mergerfs_mount_point }}"
+    state: directory
+    owner: "{{ mergerfs_owner_user }}"
+    group: "{{ mergerfs_owner_group }}"
+    mode: "{{ mergerfs_mode }}"
+  tags:
+    - mergerfs
+    - permissions

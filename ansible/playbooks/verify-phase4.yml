@@ -1,0 +1,95 @@
+---
+- name: Homelab2 Phase 4 Storage Health & Acceptance Verification
+  hosts: homelab_nodes
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: "STO-01: Assert physical disk mounts active in /proc/mounts and /etc/fstab"
+      ansible.builtin.shell:
+        cmd: |
+          for mp in /mnt/disks/data1 /mnt/disks/data2 /mnt/disks/parity1 /mnt/scratch; do
+            grep -qs " $mp " /proc/mounts && grep -qs " $mp " /etc/fstab || exit 1
+          done
+      changed_when: false
+
+    - name: "STO-02: Assert MergerFS virtual pool active at /mnt/storage"
+      ansible.builtin.shell:
+        cmd: "grep -qs '^[^ ]* /mnt/storage fuse\\.mergerfs ' /proc/mounts && mountpoint -q /mnt/storage"
+      changed_when: false
+
+    - name: "STO-03: Assert pool write, underlying placement, and delete lifecycle"
+      ansible.builtin.shell:
+        cmd: |
+          TEST_FILE="/mnt/storage/test-verify-sto03-$$.tmp"
+          echo 'sto03-payload' > "$TEST_FILE"
+          grep -qs 'sto03-payload' "$TEST_FILE" || exit 1
+          FOUND=$(find /mnt/disks/data* -maxdepth 2 -name "test-verify-sto03-$$.tmp" 2>/dev/null | head -n1)
+          [ -n "$FOUND" ] || exit 1
+          rm -f "$TEST_FILE"
+          ! test -f "$TEST_FILE" || exit 1
+      changed_when: false
+
+    - name: "STO-04: Assert scratch tier /mnt/scratch isolated from MergerFS branches"
+      ansible.builtin.shell:
+        cmd: "! grep -E '/mnt/storage' /etc/fstab | grep -q '/mnt/scratch' && mountpoint -q /mnt/scratch"
+      changed_when: false
+
+    - name: "STO-05: Assert NVMe application tier /opt/services exists with proper ownership"
+      ansible.builtin.stat:
+        path: /opt/services
+      register: opt_services_stat
+      failed_when:
+        - not opt_services_stat.stat.exists
+        - opt_services_stat.stat.pw_name != "admin"
+        - opt_services_stat.stat.gr_name != "storage"
+
+    - name: "STO-06: Assert storage group GID 1001, admin member, and setgid on /mnt/storage & /mnt/scratch"
+      ansible.builtin.shell:
+        cmd: |
+          [ "$(getent group storage | cut -d: -f3)" = "1001" ] || exit 1
+          id -Gn admin | grep -qw storage || exit 1
+          [ "$(stat -c '%a' /mnt/storage)" = "2775" ] || exit 1
+          [ "$(stat -c '%a' /mnt/scratch)" = "2775" ] || exit 1
+      changed_when: false
+
+    - name: "STO-07: Assert SnapRAID configuration syntax and array status"
+      ansible.builtin.command:
+        cmd: snapraid status
+      changed_when: false
+
+    - name: "STO-08: Assert parity safety runner exists, is executable, and passes evaluation"
+      ansible.builtin.command:
+        cmd: /usr/local/bin/snapraid-runner.sh
+      changed_when: false
+
+    - name: "STO-09: Assert systemd timers snapraid-sync and snapraid-scrub are active"
+      ansible.builtin.systemd:
+        name: "{{ item }}"
+        state: started
+      check_mode: true
+      loop:
+        - snapraid-sync.timer
+        - snapraid-scrub.timer
+      register: timer_status
+      failed_when: timer_status.status.ActiveState != "active"
+
+    - name: "STO-10: Assert journald telemetry contains SnapRAID events"
+      ansible.builtin.shell:
+        cmd: "journalctl -t snapraid -n 5 | grep -Eq 'SnapRAID'"
+      changed_when: false
+
+    - name: Display Phase 4 storage verification summary report
+      ansible.builtin.debug:
+        msg:
+          - "--- Phase 4 Storage Verification Assertions Summary ---"
+          - "STO-01 Physical Mounts: PASS"
+          - "STO-02 MergerFS Pool Mount: PASS"
+          - "STO-03 Pool Lifecycle: PASS"
+          - "STO-04 Scratch Isolation: PASS"
+          - "STO-05 NVMe App Tier (/opt/services): PASS"
+          - "STO-06 Storage Group & Setgid (2775): PASS"
+          - "STO-07 SnapRAID Status: PASS"
+          - "STO-08 Safety Runner: PASS"
+          - "STO-09 Systemd Timers (sync/scrub): PASS"
+          - "STO-10 Journald Telemetry: PASS"

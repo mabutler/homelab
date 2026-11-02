@@ -1,0 +1,16 @@
+---
+# Handlers for snapraid
+
+- name: Systemd daemon-reload
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: Restart snapraid-sync timer
+  ansible.builtin.systemd:
+    name: snapraid-sync.timer
+    state: restarted
+
+- name: Restart snapraid-scrub timer
+  ansible.builtin.systemd:
+    name: snapraid-scrub.timer
+    state: restarted

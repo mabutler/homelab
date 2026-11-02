@@ -1,0 +1,26 @@
+---
+# Defaults for role snapraid
+snapraid_parity_file: "/mnt/disks/parity1/snapraid.parity"
+
+snapraid_content_files:
+  - "/var/snapraid.content"
+  - "/mnt/disks/data1/snapraid.content"
+  - "/mnt/disks/data2/snapraid.content"
+
+snapraid_data_disks:
+  - name: "d1"
+    path: "/mnt/disks/data1"
+  - name: "d2"
+    path: "/mnt/disks/data2"
+
+snapraid_excludes:
+  - "*.bak"
+  - "*.tmp"
+  - "*.part"
+  - "*Thumbs.db"
+  - ".DS_Store"
+  - ".Trash-*"
+  - "/mnt/scratch/"
+  - "*.unrecoverable"
+
+snapraid_diff_deletion_threshold: 50

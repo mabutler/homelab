@@ -1,0 +1,23 @@
+---
+# Defaults for role mergerfs
+mergerfs_mount_point: "/mnt/storage"
+mergerfs_branches: "/mnt/disks/data*"
+mergerfs_category_create: "mfs"
+mergerfs_func_mkdir: "epmfs"
+mergerfs_minfreespace: "50G"
+mergerfs_fsname: "storage_pool"
+mergerfs_options: "{{ ['defaults',
+  'allow_other',
+  'use_ino',
+  'cache.files=partial',
+  'dropcacheonclose=true',
+  'category.create=mfs',
+  'func.mkdir=epmfs',
+  'minfreespace=50G',
+  'atomic_rename=true',
+  'fsname=storage_pool',
+  'nofail',
+  'x-systemd.requires-mounts-for=/mnt/disks/data1'] | join(',') }}"
+mergerfs_owner_user: "admin"
+mergerfs_owner_group: "storage"
+mergerfs_mode: "2775"

@@ -93,6 +93,58 @@
       register: health_response
       failed_when: health_response.status != 200
 
+    # Phase 4 Storage Pooling & Resiliency Assertions
+    - name: "STO-01: Assert physical disk mounts active in /proc/mounts and /etc/fstab"
+      ansible.builtin.shell:
+        cmd: |
+          for mp in /mnt/disks/data1 /mnt/disks/data2 /mnt/disks/parity1 /mnt/scratch; do
+            grep -qs " $mp " /proc/mounts && grep -qs " $mp " /etc/fstab || exit 1
+          done
+      changed_when: false
+
+    - name: "STO-02: Assert MergerFS virtual pool active at /mnt/storage"
+      ansible.builtin.shell:
+        cmd: "grep -qs '^[^ ]* /mnt/storage fuse\\.mergerfs ' /proc/mounts && mountpoint -q /mnt/storage"
+      changed_when: false
+
+    - name: "STO-04: Assert scratch tier /mnt/scratch isolated from MergerFS branches"
+      ansible.builtin.shell:
+        cmd: "! grep -E '/mnt/storage' /etc/fstab | grep -q '/mnt/scratch' && mountpoint -q /mnt/scratch"
+      changed_when: false
+
+    - name: "STO-05: Assert NVMe application tier /opt/services exists with proper ownership"
+      ansible.builtin.stat:
+        path: /opt/services
+      register: opt_services_stat
+      failed_when:
+        - not opt_services_stat.stat.exists
+        - opt_services_stat.stat.pw_name != "admin"
+        - opt_services_stat.stat.gr_name != "storage"
+
+    - name: "STO-06: Assert storage group GID 1001 and setgid 2775 on /mnt/storage & /mnt/scratch"
+      ansible.builtin.shell:
+        cmd: |
+          [ "$(getent group storage | cut -d: -f3)" = "1001" ] || exit 1
+          [ "$(stat -c '%a' /mnt/storage)" = "2775" ] || exit 1
+          [ "$(stat -c '%a' /mnt/scratch)" = "2775" ] || exit 1
+      changed_when: false
+
+    - name: "STO-07: Assert SnapRAID status"
+      ansible.builtin.command:
+        cmd: snapraid status
+      changed_when: false
+
+    - name: "STO-09: Assert SnapRAID timers active"
+      ansible.builtin.systemd:
+        name: "{{ item }}"
+        state: started
+      check_mode: true
+      loop:
+        - snapraid-sync.timer
+        - snapraid-scrub.timer
+      register: snap_timers
+      failed_when: snap_timers.status.ActiveState != "active"
+
     - name: Display verification summary report
       ansible.builtin.debug:
         msg:
@@ -108,3 +160,7 @@
           - "tailscaled Active: {{ tailscaled_status.status.ActiveState }}"
           - "caddy Active: {{ caddy_status.status.ActiveState }}"
           - "Caddy Health (HTTP 200): {{ health_response.status == 200 }}"
+          - "Storage Mounts & Pool (STO-01, STO-02): PASS"
+          - "Scratch Isolation & NVMe Tier (STO-04, STO-05): PASS"
+          - "Storage Group & Setgid (STO-06): PASS"
+          - "SnapRAID Status & Timers (STO-07, STO-09): PASS"

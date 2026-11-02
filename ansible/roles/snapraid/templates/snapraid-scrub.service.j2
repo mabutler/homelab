@@ -1,0 +1,10 @@
+[Unit]
+Description=SnapRAID Weekly Integrity Scrub
+ConditionACPower=true
+After=mnt-storage.mount
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/snapraid scrub -p 8 -o 10
+StandardOutput=journal
+StandardError=journal
