@@ -1,0 +1,8 @@
+---
+# Defaults for caddy role
+
+caddy_enabled: true
+caddy_conf_dir: "/etc/caddy/conf.d"
+caddy_log_level: "INFO"
+caddy_service_state: "started"
+caddy_service_enabled: true

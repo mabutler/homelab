@@ -22,28 +22,28 @@ The complete architectural blueprint, phased implementation roadmap, application
 
 ```mermaid
 flowchart LR
-    P1["Phase 1: Base OS Bootstrap\n(In Progress)"] --> P2["Phase 2: Core Hardening & IaC"]
-    P2 --> P3["Phase 3: Network & Remote Access"]
-    P3 --> P4["Phase 4: Storage Array & Pooling"]
+    P1["Phase 1: Base OS Bootstrap\n(Completed)"] --> P2["Phase 2: Core Hardening & IaC\n(Completed)"]
+    P2 --> P3["Phase 3: Network & Remote Access\n(Completed)"]
+    P3 --> P4["Phase 4: Storage Array & Pooling\n(Next)"]
     P4 --> P5["Phase 5: Application Platform"]
     P5 --> P6["Phase 6: Game Streaming & GPU"]
     P6 --> P7["Phase 7: Central Offsite Backups"]
     P7 --> P8["Phase 8: Platform Telemetry & Ops"]
 
-    style P1 fill:#2563eb,stroke:#1d4ed8,color:#fff
-    style P2 fill:#475569,stroke:#334155,color:#fff
-    style P3 fill:#475569,stroke:#334155,color:#fff
-    style P4 fill:#475569,stroke:#334155,color:#fff
+    style P1 fill:#16a34a,stroke:#15803d,color:#fff
+    style P2 fill:#16a34a,stroke:#15803d,color:#fff
+    style P3 fill:#16a34a,stroke:#15803d,color:#fff
+    style P4 fill:#2563eb,stroke:#1d4ed8,color:#fff
     style P5 fill:#475569,stroke:#334155,color:#fff
     style P6 fill:#475569,stroke:#334155,color:#fff
     style P7 fill:#475569,stroke:#334155,color:#fff
     style P8 fill:#475569,stroke:#334155,color:#fff
 ```
 
-- **Phase 1: Bare-Metal Live Bootstrap & Base OS Provisioning** *(Current)*: Boot Arch live ISO, run idempotent bootstrap installer, reboot headlessly into verified SSH-ready target host. *Gates: Git profile recovery & pre/post-reboot health verification (internal bootstrap exception).*
-- **Phase 2: Base System Hardening & Configuration Management**: Ansible setup, SOPS/age secrets integration, SSH hardening, sudo privileges, core diagnostic daemons, persistent udev hardware rules. *Gates: Vault/key backup & smartd/chrony/journald telemetry.*
-- **Phase 3: Network & Remote Access Overlay**: Tailscale mesh VPN, nftables firewall, reverse proxy (Caddy/Traefik) with automated ACME TLS and WebSocket support. *Gates: TLS config backup & HTTP/Tailscale route telemetry.*
-- **Phase 4: Storage Pooling & Data Resiliency Layer**: Multi-drive layout, MergerFS pool (`/mnt/storage`), SnapRAID parity snapshots, fast NVMe app cache (`/opt/services`), and isolated scratch path (`/mnt/scratch`). *Gates: Parity sync & MergerFS mount/diff telemetry.*
+- **Phase 1: Bare-Metal Live Bootstrap & Base OS Provisioning** *(Completed)*: Boot Arch live ISO, run idempotent bootstrap installer, reboot headlessly into verified SSH-ready target host. *Gates: Git profile recovery & pre/post-reboot health verification (internal bootstrap exception).*
+- **Phase 2: Base System Hardening & Configuration Management** *(Completed)*: Ansible setup, SOPS/age secrets integration, SSH hardening, sudo privileges, core diagnostic daemons, persistent udev hardware rules. *Gates: Vault/key backup & smartd/chrony/journald telemetry verified.*
+- **Phase 3: Network & Remote Access Overlay** *(Completed)*: Tailscale mesh VPN, nftables firewall, reverse proxy (Caddy) with modular drop-ins, automated ACME TLS, WebSocket upgrade support, and health check assertion suite. *Gates: TLS config backup, HTTP/Tailscale telemetry, and NET-01 through NET-08 verification.*
+- **Phase 4: Storage Pooling & Data Resiliency Layer** *(Next)*: Multi-drive layout, MergerFS pool (`/mnt/storage`), SnapRAID parity snapshots, fast NVMe app cache (`/opt/services`), and isolated scratch path (`/mnt/scratch`). *Gates: Parity sync & MergerFS mount/diff telemetry.*
 - **Phase 5: Application Platform**: Rootless container stacks (Docker/Podman Compose). **Each app requires individual backup & telemetry verification:**
   - **Home Assistant & ZWaveJS**: Backup (config + DB snapshot) & Telemetry (healthcheck, API endpoint, udev tracking).
   - **Immich**: Backup (`pg_dump` + photo sync) & Telemetry (server ping, ML status, GPU transcode metric).

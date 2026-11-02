@@ -1,0 +1,15 @@
+# Global configuration block
+{
+    # Log configuration: structured output to stderr/journald
+    log {
+        output stderr
+        format console
+        level {{ caddy_log_level | default('INFO') }}
+    }
+
+    # Disable admin API port or bind to local unix socket
+    admin off
+}
+
+# Import all service drop-in configurations
+import {{ caddy_conf_dir | default('/etc/caddy/conf.d') }}/*.caddy

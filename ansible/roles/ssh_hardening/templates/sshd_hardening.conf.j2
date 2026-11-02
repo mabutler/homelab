@@ -9,6 +9,7 @@ KbdInteractiveAuthentication no
 AuthenticationMethods publickey
 MaxAuthTries {{ ssh_max_auth_tries | default(3) }}
 X11Forwarding no
+UseDNS no
 
 Ciphers {{ ssh_ciphers | default(['chacha20-poly1305@openssh.com', 'aes256-gcm@openssh.com', 'aes128-gcm@openssh.com']) | join(',') }}
 MACs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com,umac-128-etm@openssh.com

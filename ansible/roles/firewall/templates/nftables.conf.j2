@@ -1,0 +1,48 @@
+#!/usr/bin/nft -f
+# /etc/nftables.conf
+# Managed by Ansible - do not edit manually
+
+flush ruleset
+
+table {{ firewall_address_family | default('inet') }} {{ firewall_table_name | default('filter') }} {
+    chain input {
+        type filter hook input priority filter; policy drop;
+
+        # 1. Allow established and related traffic
+        ct state established,related accept
+
+        # 2. Drop invalid packets
+        ct state invalid drop
+
+        # 3. Allow loopback traffic
+        iifname "lo" accept
+
+        # 4. Allow ICMP / ICMPv6 (diagnostics and path MTU discovery)
+        ip protocol icmp accept
+        ip6 nexthdr ipv6-icmp accept
+
+        # 5. Allow Tailscale mesh interface traffic unconditionally
+        iifname "tailscale0" accept
+
+        # 6. Allow Tailscale UDP encapsulation port on physical interfaces
+{% if firewall_allowed_udp_ports | length > 0 %}
+        udp dport { {{ firewall_allowed_udp_ports | join(', ') }} } accept
+{% endif %}
+
+        # 7. Allow SSH from trusted management subnets
+{% for subnet in firewall_allowed_subnets %}
+        ip saddr {{ subnet }} tcp dport 22 accept
+{% endfor %}
+
+        # 8. Allow Web Ingress (HTTP 80 and HTTPS 443)
+        tcp dport { 80, 443 } accept
+    }
+
+    chain forward {
+        type filter hook forward priority filter; policy drop;
+    }
+
+    chain output {
+        type filter hook output priority filter; policy accept;
+    }
+}

@@ -9,8 +9,21 @@ Thumbs.db
 # Logs
 *.log
 
-# Sensitive files / secrets
+# Sensitive files / secrets & age private keys
 secrets/*.key
 secrets/*.id_ed25519
 !secrets/*.pub
 !secrets/.gitkeep
+*.key
+keys.txt
+age-key-qr.png
+!*.sops.yml
+!*.sops.yaml
+
+# Ansible artifacts & cache
+.ansible/
+*.retry
+
+# Python cache
+__pycache__/
+*.pyc

@@ -1,0 +1,62 @@
+---
+- name: Homelab2 Phase 3 Network & Remote Access Overlay
+  hosts: homelab_nodes
+  become: true
+  gather_facts: true
+
+  pre_tasks:
+    - name: Resolve SOPS age key file path
+      ansible.builtin.set_fact:
+        effective_age_key_file: "{{ lookup('ansible.builtin.env', 'SOPS_AGE_KEY_FILE') | default('~/.config/sops/age/keys.txt', true) | expanduser }}"
+      delegate_to: localhost
+      run_once: true
+      tags:
+        - always
+
+    - name: Verify SOPS age private key exists on controller
+      ansible.builtin.stat:
+        path: "{{ effective_age_key_file }}"
+      register: age_key_stat
+      delegate_to: localhost
+      run_once: true
+      tags:
+        - always
+
+    - name: Abort if SOPS age key file is missing
+      ansible.builtin.fail:
+        msg: >
+          CRITICAL ERROR: SOPS age key file '{{ effective_age_key_file }}' not found on controller.
+          Set SOPS_AGE_KEY_FILE or ensure '~/.config/sops/age/keys.txt' exists to decrypt secrets.
+      when: not age_key_stat.stat.exists
+      delegate_to: localhost
+      run_once: true
+      tags:
+        - always
+
+    - name: Ingest SOPS-encrypted vault secrets
+      community.sops.load_vars:
+        file: "{{ inventory_dir }}/group_vars/all/vault.sops.yml"
+        age_keyfile: "{{ effective_age_key_file }}"
+      no_log: true
+      tags:
+        - always
+
+  roles:
+    - role: tailscale
+      tags:
+        - network
+        - tailscale
+        - vpn
+
+    - role: firewall
+      tags:
+        - network
+        - firewall
+        - nftables
+
+    - role: caddy
+      tags:
+        - network
+        - ingress
+        - caddy
+        - proxy

@@ -1,0 +1,51 @@
+---
+# Tasks for firewall role
+
+- name: Install nftables package
+  community.general.pacman:
+    name: nftables
+    state: present
+    update_cache: false
+
+- name: Deploy declarative nftables firewall configuration
+  ansible.builtin.template:
+    src: nftables.conf.j2
+    dest: /etc/nftables.conf
+    owner: root
+    group: root
+    mode: "0644"
+    validate: "/usr/bin/nft -c -f %s"
+  notify: Reload nftables
+
+- name: Ensure nftables systemd drop-in directory exists
+  ansible.builtin.file:
+    path: /etc/systemd/system/nftables.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Deploy nftables RemainAfterExit systemd override
+  ansible.builtin.copy:
+    content: |
+      [Service]
+      RemainAfterExit=yes
+    dest: /etc/systemd/system/nftables.service.d/override.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload nftables
+
+- name: Reload systemd daemon
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: Enable nftables service
+  ansible.builtin.systemd:
+    name: nftables
+    enabled: true
+
+- name: Start nftables service
+  ansible.builtin.systemd:
+    name: nftables
+    state: started

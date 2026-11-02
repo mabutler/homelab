@@ -1,0 +1,44 @@
+---
+# Tasks for caddy role
+
+- name: Install Caddy package
+  community.general.pacman:
+    name: caddy
+    state: present
+    update_cache: false
+
+- name: Ensure Caddy configuration directories exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - /etc/caddy
+    - "{{ caddy_conf_dir }}"
+
+- name: Deploy baseline health drop-in configuration
+  ansible.builtin.template:
+    src: 00-health.caddy.j2
+    dest: "{{ caddy_conf_dir }}/00-health.caddy"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload caddy
+
+- name: Deploy main Caddyfile
+  ansible.builtin.template:
+    src: Caddyfile.j2
+    dest: /etc/caddy/Caddyfile
+    owner: root
+    group: root
+    mode: "0644"
+    validate: "/usr/bin/caddy validate --adapter caddyfile --config %s"
+  notify: Reload caddy
+
+- name: Enable and start caddy service
+  ansible.builtin.systemd:
+    name: caddy
+    state: "{{ caddy_service_state }}"
+    enabled: "{{ caddy_service_enabled }}"

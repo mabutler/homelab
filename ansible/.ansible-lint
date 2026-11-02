@@ -1,0 +1,7 @@
+---
+# .ansible-lint configuration
+exclude_paths:
+  - "inventory/group_vars/all/vault.sops.yml"
+skip_list:
+  - "run-once[task]"
+  - "var-naming[no-role-prefix]"

@@ -120,7 +120,7 @@ else
 
     # Run playbook on remote host
     echo -e "\nExecuting playbook on target host (${PLAYBOOK})..."
-    REMOTE_CMD="cd /tmp/homelab2-ansible/ansible && export SOPS_AGE_KEY_FILE=\$HOME/.config/sops/age/keys.txt && ansible-playbook -i inventory/hosts.yml ${PLAYBOOK} --connection=local"
+    REMOTE_CMD="cd /tmp/homelab2-ansible/ansible && export SOPS_AGE_KEY_FILE=~/.config/sops/age/keys.txt && export ANSIBLE_PIPELINING=False && ansible-playbook -i inventory/hosts.yml ${PLAYBOOK} --connection=local"
     if [[ "$CHECK_MODE" == "true" ]]; then REMOTE_CMD+=" --check"; fi
     if [[ -n "$TAGS" ]]; then REMOTE_CMD+=" --tags '${TAGS}'"; fi
 

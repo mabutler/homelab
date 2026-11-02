@@ -1,0 +1,8 @@
+---
+# Defaults for tailscale role
+
+tailscale_enabled: true
+tailscale_args: "--accept-routes=true"
+tailscale_auth_key: "{{ vault_tailscale_auth_key | default('') }}"
+tailscale_service_state: "started"
+tailscale_service_enabled: true

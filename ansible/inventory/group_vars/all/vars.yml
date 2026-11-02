@@ -67,4 +67,3 @@ firewall_allowed_udp_ports:
 
 caddy_enabled: true
 caddy_conf_dir: "/etc/caddy/conf.d"
-

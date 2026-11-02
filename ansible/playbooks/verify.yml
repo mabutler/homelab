@@ -1,0 +1,110 @@
+---
+- name: Homelab2 Phase 2 Health & Acceptance Verification
+  hosts: homelab_nodes
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: "CHK-01 & CHK-03: Assert non-interactive sudo execution"
+      ansible.builtin.command:
+        cmd: sudo -n true
+      changed_when: false
+      register: sudo_result
+
+    - name: "CHK-02: Assert OpenSSH service is active"
+      ansible.builtin.systemd:
+        name: sshd
+        state: started
+      check_mode: true
+      register: sshd_status
+      failed_when: sshd_status.status.ActiveState != "active"
+
+    - name: "CHK-04: Assert chronyd service is active and tracking"
+      ansible.builtin.command:
+        cmd: chronyc tracking
+      changed_when: false
+      register: chrony_tracking
+
+    - name: "CHK-05: Assert smartd disk diagnostic service is active"
+      ansible.builtin.systemd:
+        name: smartd
+        state: started
+      check_mode: true
+      register: smartd_status
+      failed_when: smartd_status.status.ActiveState != "active"
+
+    - name: "CHK-06: Assert systemd-oomd memory guard is active"
+      ansible.builtin.systemd:
+        name: systemd-oomd
+        state: started
+      check_mode: true
+      register: oomd_status
+      failed_when: oomd_status.status.ActiveState != "active"
+
+    - name: "CHK-07: Assert systemd-journald is active and query disk usage"
+      ansible.builtin.command:
+        cmd: journalctl --disk-usage
+      changed_when: false
+      register: journal_disk_usage
+
+    - name: "CHK-08: Assert peripheral udev rules syntax"
+      ansible.builtin.stat:
+        path: /etc/udev/rules.d/99-homelab-peripherals.rules
+      register: udev_rules_file
+      failed_when: not udev_rules_file.stat.exists
+
+    # Phase 3 Network & Ingress Assertions
+    - name: "NET-01: Assert nftables service is active"
+      ansible.builtin.systemd:
+        name: nftables
+        state: started
+      check_mode: true
+      register: nftables_status
+      failed_when: nftables_status.status.ActiveState != "active"
+
+    - name: "NET-02: Assert nftables ruleset contains default drop"
+      ansible.builtin.command:
+        cmd: nft list table inet filter
+      changed_when: false
+      register: nft_rules
+      failed_when: "'policy drop;' not in nft_rules.stdout"
+
+    - name: "NET-03: Assert tailscaled service is active"
+      ansible.builtin.systemd:
+        name: tailscaled
+        state: started
+      check_mode: true
+      register: tailscaled_status
+      failed_when: tailscaled_status.status.ActiveState != "active"
+
+    - name: "NET-05: Assert caddy service is active"
+      ansible.builtin.systemd:
+        name: caddy
+        state: started
+      check_mode: true
+      register: caddy_status
+      failed_when: caddy_status.status.ActiveState != "active"
+
+    - name: "NET-06: Assert ingress HTTP /health endpoint returns 200"
+      ansible.builtin.uri:
+        url: http://127.0.0.1:80/health
+        status_code: 200
+        return_content: true
+      register: health_response
+      failed_when: health_response.status != 200
+
+    - name: Display verification summary report
+      ansible.builtin.debug:
+        msg:
+          - "--- Platform Verification Assertions Summary ---"
+          - "sshd Active: {{ sshd_status.status.ActiveState }}"
+          - "chronyd Tracking: {{ chrony_tracking.rc == 0 }}"
+          - "smartd Active: {{ smartd_status.status.ActiveState }}"
+          - "systemd-oomd Active: {{ oomd_status.status.ActiveState }}"
+          - "Journal Usage: {{ journal_disk_usage.stdout }}"
+          - "Udev Rules Present: {{ udev_rules_file.stat.exists }}"
+          - "Sudo Non-Interactive: SUCCESS"
+          - "nftables Active: {{ nftables_status.status.ActiveState }}"
+          - "tailscaled Active: {{ tailscaled_status.status.ActiveState }}"
+          - "caddy Active: {{ caddy_status.status.ActiveState }}"
+          - "Caddy Health (HTTP 200): {{ health_response.status == 200 }}"

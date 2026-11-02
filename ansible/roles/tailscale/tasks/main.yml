@@ -1,0 +1,55 @@
+---
+# Tasks for tailscale role
+
+- name: Install Tailscale package
+  community.general.pacman:
+    name: tailscale
+    state: present
+    update_cache: false
+
+- name: Enable and start tailscaled service
+  ansible.builtin.systemd:
+    name: tailscaled
+    state: "{{ tailscale_service_state }}"
+    enabled: "{{ tailscale_service_enabled }}"
+
+- name: Query current Tailscale node status
+  ansible.builtin.command:
+    cmd: tailscale status --json
+  register: tailscale_status_raw
+  changed_when: false
+  failed_when: false
+
+- name: Parse Tailscale status JSON if available
+  ansible.builtin.set_fact:
+    tailscale_backend_state: "{{ (tailscale_status_raw.stdout | from_json).BackendState | default('NeedsLogin') }}"
+  when:
+    - tailscale_status_raw.rc == 0
+    - tailscale_status_raw.stdout | length > 0
+
+- name: Notify operator if Tailscale auth key is placeholder or dummy
+  ansible.builtin.debug:
+    msg: >-
+      NOTE: Tailscale authentication skipped because 'vault_tailscale_auth_key' contains dummy/placeholder credentials.
+      Update vault.sops.yml with a valid pre-authenticated Tailscale auth key to connect to mesh.
+  when:
+    - "'placeholder' in tailscale_auth_key or 'dummy' in tailscale_auth_key"
+
+- name: Authenticate node to Tailscale mesh network
+  ansible.builtin.command:
+    cmd: "tailscale up --authkey={{ tailscale_auth_key }} {{ tailscale_args }}"
+  no_log: true
+  when:
+    - tailscale_auth_key | length > 0
+    - "'placeholder' not in tailscale_auth_key"
+    - "'dummy' not in tailscale_auth_key"
+    - tailscale_backend_state is not defined or tailscale_backend_state != "Running"
+  register: tailscale_up_result
+  changed_when: tailscale_up_result.rc == 0
+
+- name: Verify Tailscale status post-authentication
+  ansible.builtin.command:
+    cmd: tailscale status
+  register: tailscale_final_status
+  changed_when: false
+  failed_when: false

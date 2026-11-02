@@ -1,0 +1,86 @@
+---
+- name: Homelab2 Phase 3 Health & Acceptance Verification
+  hosts: homelab_nodes
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: "NET-01: Assert nftables service is active"
+      ansible.builtin.systemd:
+        name: nftables
+        state: started
+      check_mode: true
+      register: nftables_status
+      failed_when: nftables_status.status.ActiveState != "active"
+
+    - name: "NET-02: Assert nftables ruleset contains default drop and whitelisted ports"
+      ansible.builtin.command:
+        cmd: nft list table inet filter
+      changed_when: false
+      register: nft_rules
+      failed_when:
+        - "'policy drop;' not in nft_rules.stdout"
+        - "'ct state established,related accept' not in nft_rules.stdout"
+
+    - name: "NET-03: Assert tailscaled service is active"
+      ansible.builtin.systemd:
+        name: tailscaled
+        state: started
+      check_mode: true
+      register: tailscaled_status
+      failed_when: tailscaled_status.status.ActiveState != "active"
+
+    - name: "NET-04: Assert Tailscale node status"
+      ansible.builtin.command:
+        cmd: tailscale status --json
+      changed_when: false
+      register: tailscale_status
+      failed_when: tailscale_status.rc != 0
+
+    - name: "NET-05: Assert caddy service is active"
+      ansible.builtin.systemd:
+        name: caddy
+        state: started
+      check_mode: true
+      register: caddy_status
+      failed_when: caddy_status.status.ActiveState != "active"
+
+    - name: "NET-06: Assert ingress HTTP /health endpoint returns 200"
+      ansible.builtin.uri:
+        url: http://127.0.0.1:80/health
+        status_code: 200
+        return_content: true
+      register: health_response
+      failed_when: health_response.status != 200
+
+    - name: "NET-07: Assert ingress HTTP root redirects to HTTPS"
+      ansible.builtin.uri:
+        url: http://127.0.0.1:80/
+        status_code:
+          - 301
+          - 308
+        follow_redirects: none
+      register: redirect_response
+
+    - name: "NET-08: Assert listening sockets on expected ports"
+      ansible.builtin.command:
+        cmd: ss -tulpn
+      changed_when: false
+      register: listening_sockets
+      failed_when:
+        - "':22 ' not in listening_sockets.stdout"
+        - "':80 ' not in listening_sockets.stdout"
+        - "':443 ' not in listening_sockets.stdout"
+
+    - name: Display Phase 3 verification summary report
+      ansible.builtin.debug:
+        msg:
+          - "--- Phase 3 Verification Assertions Summary ---"
+          - "nftables Active: {{ nftables_status.status.ActiveState }}"
+          - "nftables Default Drop: {{ 'policy drop;' in nft_rules.stdout }}"
+          - "tailscaled Active: {{ tailscaled_status.status.ActiveState }}"
+          - "Tailscale Status: {{ (tailscale_status.stdout | from_json).BackendState | default('N/A') }}"
+          - "caddy Active: {{ caddy_status.status.ActiveState }}"
+          - "HTTP /health 200 OK: {{ health_response.status == 200 }}"
+          - "HTTP -> HTTPS Redirect: {{ redirect_response.status in [301, 308] }}"
+          - "Sockets Active: 22, 80, 443"

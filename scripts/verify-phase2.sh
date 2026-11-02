@@ -77,7 +77,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-SSH_OPTS=(-o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=5)
+SSH_OPTS=(-o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=5 -o LogLevel=ERROR)
 if [[ -n "$IDENTITY_FILE" ]]; then
     SSH_OPTS+=(-i "$IDENTITY_FILE")
 fi
@@ -101,14 +101,14 @@ run_check() {
     echo -n "[$check_id] $check_name ... "
     if "$@"; then
         echo -e "${GREEN}PASS${NC}"
-        ((PASSED++))
+        PASSED=$((PASSED + 1))
     else
         if [[ "$is_critical" == "true" ]]; then
             echo -e "${RED}FAIL (CRITICAL)${NC}"
-            ((FAILED++))
+            FAILED=$((FAILED + 1))
         else
             echo -e "${YELLOW}WARN (NON-CRITICAL)${NC}"
-            ((WARNINGS++))
+            WARNINGS=$((WARNINGS + 1))
         fi
     fi
 }
@@ -142,7 +142,7 @@ run_check "CHK-02" "SSH public key authentication (< 3s)" "true" check_02
 # CHK-03: Sudo privileges without password prompt
 check_03() {
     local output
-    output=$(ssh "${SSH_OPTS[@]}" "${SSH_USER}@${TARGET_HOST}" "sudo -n true" 2>&1)
+    output=$(ssh "${SSH_OPTS[@]}" "${SSH_USER}@${TARGET_HOST}" "sudo -n true 2>&1")
     if [[ -z "$output" ]]; then
         return 0
     fi

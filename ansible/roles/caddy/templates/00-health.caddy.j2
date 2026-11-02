@@ -1,0 +1,24 @@
+# Core health assertion endpoint and default HTTPS redirect
+# Managed by Ansible - do not edit manually
+
+:80 {
+    handle /health {
+        respond "OK" 200
+    }
+
+    # Default fallback redirect to HTTPS for general traffic
+    handle {
+        redir https://{host}{uri} permanent
+    }
+}
+
+:443 {
+    tls internal
+    handle /health {
+        respond "OK" 200
+    }
+    handle {
+        respond "Homelab Ingress Ready" 200
+    }
+}
+

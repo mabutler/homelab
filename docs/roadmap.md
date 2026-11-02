@@ -269,17 +269,17 @@ To satisfy Constitution Principle I (Pragmatic Architecture), Principle II (Idem
 
 ```mermaid
 flowchart LR
-    P1["Phase 1\nBase OS Bootstrap"] --> P2["Phase 2\nCore Hardening & IaC"]
-    P2 --> P3["Phase 3\nNetwork & Ingress Overlay"]
+    P1["Phase 1\nBase OS Bootstrap\n(Completed)"] --> P2["Phase 2\nCore Hardening & IaC\n(Completed)"]
+    P2 --> P3["Phase 3\nNetwork & Ingress Overlay\n(Next)"]
     P3 --> P4["Phase 4\nStorage Array & Pooling"]
     P4 --> P5["Phase 5\nApplication Platform"]
     P5 --> P6["Phase 6\nGame Streaming & GPU"]
     P6 --> P7["Phase 7\nCentral Offsite Backups"]
     P7 --> P8["Phase 8\nPlatform Telemetry & Ops"]
 
-    style P1 fill:#2563eb,stroke:#1d4ed8,color:#fff
-    style P2 fill:#475569,stroke:#334155,color:#fff
-    style P3 fill:#475569,stroke:#334155,color:#fff
+    style P1 fill:#16a34a,stroke:#15803d,color:#fff
+    style P2 fill:#16a34a,stroke:#15803d,color:#fff
+    style P3 fill:#2563eb,stroke:#1d4ed8,color:#fff
     style P4 fill:#475569,stroke:#334155,color:#fff
     style P5 fill:#475569,stroke:#334155,color:#fff
     style P6 fill:#475569,stroke:#334155,color:#fff
@@ -295,7 +295,7 @@ flowchart LR
 
 ---
 
-### Phase 1: Bare-Metal Live Bootstrap & Base OS Provisioning *(In Progress)*
+### Phase 1: Bare-Metal Live Bootstrap & Base OS Provisioning *(Completed)*
 - **Spec**: [`specs/001-initial-arch-install/spec.md`](file:///C:/Users/micro/projects/homelab2/specs/001-initial-arch-install/spec.md)
 - **Primary Goal**: Boot an Arch live USB, run an automated bootstrap script, and achieve a working, bootable, headless Arch OS installation reachable over SSH.
 - **Key Deliverables**:
@@ -309,7 +309,8 @@ flowchart LR
   - *Backup Gate*: Repository and installation profile recovery verified from git; secrets bundle extraction and restoration confirmed.
   - *Telemetry Gate*: Pre-reboot validation assertions pass (fstab, bootloader, user/SSH keys); post-reboot systemd journal logs and SSH availability confirmed.
 
-### Phase 2: Base System Hardening & Configuration Management Foundation
+### Phase 2: Base System Hardening & Configuration Management Foundation *(Completed)*
+- **Spec**: [`specs/002-core-hardening-iac/spec.md`](file:///C:/Users/micro/projects/homelab2/specs/002-core-hardening-iac/spec.md)
 - **Primary Goal**: Establish the declarative Ansible configuration framework and apply base system hardening.
 - **Key Deliverables**:
   - Ansible project structure, inventory definitions, and linting pipeline (`ansible-lint`).
@@ -319,8 +320,8 @@ flowchart LR
   - Core system services: time synchronization (`chrony`), drive diagnostics (`smartd`), memory safeguards (`systemd-oomd`).
   - Udev rules for persistent hardware device symlinks (Z-Wave controller, Coral TPU).
 - **Phase 2 Completion Gates**:
-  - *Backup Gate*: Ansible inventory and encrypted host vault verified committed to version control; age master key backed up out-of-band.
-  - *Telemetry Gate*: `smartd` health logging verified; `chrony` time tracking verified; journald persistent storage assertions pass.
+  - *Backup Gate*: Ansible inventory and encrypted host vault verified committed to version control; age master key backed up out-of-band (`docs/recovery/age-key-backup.md`).
+  - *Telemetry Gate*: `smartd` health logging verified; `chrony` time tracking verified; journald persistent storage assertions pass; automated assertion runner (`scripts/verify-phase2.sh`, `ansible/playbooks/verify.yml`).
 
 ### Phase 3: Network & Remote Access Overlay
 - **Primary Goal**: Provide zero-friction, secure remote access without punching holes in router firewalls, establishing ingress before storage and application deployments.
