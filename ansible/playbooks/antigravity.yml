@@ -1,0 +1,11 @@
+---
+- name: Deploy Target Host Antigravity & Remote Control
+  hosts: homelab_nodes
+  gather_facts: true
+
+  roles:
+    - role: antigravity
+      tags:
+        - antigravity
+        - remote_control
+        - agent

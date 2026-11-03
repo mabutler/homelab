@@ -237,6 +237,9 @@
           - "Vaultwarden & Ingress (VW-01, VW-02, VW-05, VW-06): PASS"
           - "Vaultwarden Security & Backups (VW-03, VW-04, VW-07, VW-08, VW-09): PASS"
 
-- import_playbook: verify-phase5-backup.yml
+- name: Import Phase 5 Backup Verification Playbook
+  ansible.builtin.import_playbook: verify-phase5-backup.yml
 
+- name: Import Feature 007 Antigravity Verification Playbook
+  ansible.builtin.import_playbook: verify-phase7-antigravity.yml
 

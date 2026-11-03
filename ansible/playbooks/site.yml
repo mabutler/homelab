@@ -115,4 +115,8 @@
         - backup
         - restic
 
-
+    - role: antigravity
+      tags:
+        - antigravity
+        - remote_control
+        - agent

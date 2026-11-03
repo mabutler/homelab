@@ -1,0 +1,49 @@
+---
+# Defaults for role antigravity
+
+# Operator user configuration
+antigravity_operator_user: "admin"
+antigravity_operator_group: "admin"
+antigravity_operator_home: "/home/admin"
+
+# Remote Control instance parameters
+antigravity_instance_name: "homelab2-target"
+antigravity_service_unit: "agy-remote-control.service"
+antigravity_model: "Gemini 3.8 Flash (Medium)"
+antigravity_tool_permission: "always-proceed"
+antigravity_agent_mode: "auto"
+antigravity_trusted_workspaces:
+  - "/home/admin/homelab2"
+
+# Paths and directories
+antigravity_binary_dir: "/home/admin/.local/bin"
+antigravity_binary_path: "/home/admin/.local/bin/agy"
+antigravity_system_symlink: "/usr/local/bin/agy"
+antigravity_profile_dir: "/home/admin/.gemini"
+antigravity_config_dir: "/home/admin/.gemini/antigravity-cli"
+antigravity_settings_path: "/home/admin/.gemini/antigravity-cli/settings.json"
+antigravity_oauth_creds_path: "/home/admin/.gemini/oauth_creds.json"
+antigravity_google_accounts_path: "/home/admin/.gemini/google_accounts.json"
+
+# Workspace and Git repository
+antigravity_workspace_root: "/home/admin/homelab2"
+antigravity_worktrees_dir: "/home/admin/homelab2/.worktrees"
+antigravity_git_remote_url: "https://github.com/mabutler/homelab.git"
+antigravity_git_user_name: "homelab-admin"
+antigravity_git_user_email: "admin@homelab2.local"
+
+# SSH credentials
+antigravity_ssh_dir: "/home/admin/.ssh"
+antigravity_ssh_key_path: "/home/admin/.ssh/id_ed25519_github"
+antigravity_ssh_pub_path: "/home/admin/.ssh/id_ed25519_github.pub"
+antigravity_ssh_config_path: "/home/admin/.ssh/config"
+
+# Controller-side secret source paths (optional / fallback)
+antigravity_local_oauth_creds: "{{ playbook_dir }}/../../secrets/antigravity/oauth_creds.json"
+antigravity_local_google_accounts: "{{ playbook_dir }}/../../secrets/antigravity/google_accounts.json"
+antigravity_local_ssh_key: "{{ playbook_dir }}/../../secrets/ssh/id_ed25519_github"
+antigravity_local_ssh_pub: "{{ playbook_dir }}/../../secrets/ssh/id_ed25519_github.pub"
+
+# Backup manifest files
+antigravity_backup_include_path: "/etc/homelab/backup-include.txt"
+antigravity_backup_exclude_path: "/etc/homelab/backup-excludes.txt"

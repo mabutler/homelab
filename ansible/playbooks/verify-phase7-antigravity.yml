@@ -1,0 +1,91 @@
+---
+- name: Homelab2 Feature 007 Antigravity & Remote Control Acceptance Verification
+  hosts: homelab_nodes
+  become: false
+  gather_facts: false
+
+  vars:
+    operator_user: "admin"
+    workspace_root: "/home/admin/homelab2"
+    user_env:
+      XDG_RUNTIME_DIR: "/run/user/1000"
+      DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/1000/bus"
+      PATH: "/home/admin/.local/bin:/usr/local/bin:/usr/bin:/bin"
+
+  tasks:
+    - name: "AG-001: Assert Antigravity CLI binary is installed and executable"
+      ansible.builtin.shell:
+        cmd: "command -v agy && agy --version"
+      environment: "{{ user_env }}"
+      changed_when: false
+      register: ag001_check
+      failed_when: ag001_check.rc != 0
+
+    - name: "AG-002: Assert systemd user lingering is enabled for operator"
+      ansible.builtin.stat:
+        path: "/var/lib/systemd/linger/{{ operator_user }}"
+      become: true
+      register: ag002_check
+      failed_when: not ag002_check.stat.exists
+
+    - name: "AG-003: Assert agy-remote-control service is active under systemd user scope"
+      ansible.builtin.shell:
+        cmd: "systemctl --user is-active agy-remote-control.service"
+      environment: "{{ user_env }}"
+      changed_when: false
+      register: ag003_check
+      failed_when: "'active' not in ag003_check.stdout"
+
+    - name: "AG-004: Assert Remote Control instance homelab2-target is registered"
+      ansible.builtin.shell:
+        cmd: "agy remote-control status"
+      environment: "{{ user_env }}"
+      changed_when: false
+      register: ag004_check
+      failed_when: "'homelab2-target' not in ag004_check.stdout"
+
+    - name: "AG-005: Assert autonomous settings.json configuration and file permissions"
+      ansible.builtin.shell:
+        cmd: |
+          jq -e '.toolPermission == "always-proceed" and .agentMode == "auto"' /home/admin/.gemini/antigravity-cli/settings.json >/dev/null && \
+          test "$(stat -c '%a' /home/admin/.gemini/antigravity-cli/settings.json)" = "600"
+      changed_when: false
+      register: ag005_check
+      failed_when: ag005_check.rc != 0
+
+    - name: "AG-006: Assert target host Git workspace and worktrees are operational"
+      ansible.builtin.shell:
+        cmd: "git -C {{ workspace_root }} rev-parse --is-inside-work-tree && git -C {{ workspace_root }} worktree list"
+      changed_when: false
+      register: ag006_check
+      failed_when: ag006_check.rc != 0
+
+    - name: "AG-007: Assert backup inclusion and exclusion manifest registration"
+      ansible.builtin.shell:
+        cmd: |
+          grep -F '/home/admin/.gemini/oauth_creds.json' /etc/homelab/backup-include.txt >/dev/null && \
+          grep -F '/home/admin/.gemini/antigravity-cli/cache/**' /etc/homelab/backup-excludes.txt >/dev/null
+      become: true
+      changed_when: false
+      register: ag007_check
+      failed_when: ag007_check.rc != 0
+
+    - name: "AG-008: Assert zero secret credentials or private keys tracked in Git"
+      ansible.builtin.shell:
+        cmd: "git -C {{ workspace_root }} status --porcelain | grep -E 'oauth_creds|google_accounts|\\.env|id_ed25519' || true"
+      changed_when: false
+      register: ag008_check
+      failed_when: ag008_check.stdout != ""
+
+    - name: Display Feature 007 verification summary report
+      ansible.builtin.debug:
+        msg:
+          - "--- Feature 007 Antigravity Remote Control Verification Summary ---"
+          - "AG-001 CLI Binary Available       : PASS ({{ ag001_check.stdout_lines | first | default('ok') }})"
+          - "AG-002 User Lingering Enabled     : PASS"
+          - "AG-003 Service Active             : PASS ({{ ag003_check.stdout | trim }})"
+          - "AG-004 Instance Registered        : PASS (homelab2-target)"
+          - "AG-005 Autonomous Settings Valid  : PASS"
+          - "AG-006 Git Workspace & Worktrees  : PASS"
+          - "AG-007 Backup Manifests Valid     : PASS"
+          - "AG-008 Zero Secrets in Git        : PASS"

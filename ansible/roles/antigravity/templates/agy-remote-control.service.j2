@@ -1,0 +1,15 @@
+[Unit]
+Description=Google Antigravity Remote Control Daemon ({{ antigravity_instance_name }})
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment="HOME={{ antigravity_operator_home }}"
+Environment="PATH={{ antigravity_binary_dir }}:/usr/local/bin:/usr/bin:/bin"
+ExecStart={{ antigravity_binary_path }} remote-control daemon --name {{ antigravity_instance_name }}
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target
