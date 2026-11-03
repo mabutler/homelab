@@ -1,0 +1,39 @@
+---
+# Defaults for backup role
+
+backup_config_dir: "/etc/homelab"
+backup_hook_dir: "/etc/homelab/backup.d"
+backup_runner_path: "/usr/local/bin/homelab-backup"
+
+# 4 Bootstrap credentials / repository targets
+backup_b2_account_id: "{{ vault_b2_account_id | default('') }}"
+backup_b2_account_key: "{{ vault_b2_account_key | default('') }}"
+backup_restic_repository: "{{ vault_restic_repository | default('') }}"
+backup_restic_password: "{{ vault_restic_password | default('') }}"
+
+# Inclusions and exclusions
+backup_include_paths:
+  - "/etc/homelab/vault.yml"
+  - "/etc/homelab/apps"
+  - "/opt/services"
+
+backup_exclude_patterns:
+  - "*.sqlite3"
+  - "*.db"
+  - "*.sqlite3-wal"
+  - "*.sqlite3-shm"
+  - "*.sock"
+  - "*.log"
+  - "*.tmp"
+  - "/opt/services/*/backups/vaultwarden-backup-*.tar.gz"
+
+# Retention policy
+backup_keep_daily: 7
+backup_keep_weekly: 5
+backup_keep_monthly: 12
+
+# Systemd timer schedules
+backup_timer_on_calendar: "*-*-* 02:30:00"
+backup_timer_randomized_delay_sec: 300
+backup_check_timer_on_calendar: "Sun *-*-* 04:00:00"
+backup_check_data_subset: "5%"

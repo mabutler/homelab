@@ -1,0 +1,26 @@
+---
+# Defaults for vaultwarden role
+
+vaultwarden_service_name: "vaultwarden"
+vaultwarden_image_tag: "vaultwarden/server:1.32.7-alpine"
+vaultwarden_internal_port: 8088
+vaultwarden_bind_address: "127.0.0.1"
+
+vaultwarden_service_dir: "/opt/services/vaultwarden"
+vaultwarden_data_dir: "{{ vaultwarden_service_dir }}/data"
+vaultwarden_backups_dir: "{{ vaultwarden_service_dir }}/backups"
+vaultwarden_scripts_dir: "{{ vaultwarden_service_dir }}/scripts"
+
+vaultwarden_user_uid: 1000
+vaultwarden_user_gid: 1000
+
+vaultwarden_domain: "https://vaultwarden.lan"
+vaultwarden_signups_allowed: false
+vaultwarden_invitations_allowed: true
+vaultwarden_websocket_enabled: true
+vaultwarden_enable_db_wal: true
+vaultwarden_rocket_port: 80
+vaultwarden_log_level: "info"
+
+vaultwarden_admin_token_hash: ""
+vaultwarden_retention_days: 30

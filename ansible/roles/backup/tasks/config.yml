@@ -1,0 +1,66 @@
+---
+# Configuration tasks for backup role
+
+- name: Ensure /etc/homelab configuration directory exists
+  ansible.builtin.file:
+    path: "{{ backup_config_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0750"
+
+- name: Ensure /etc/homelab/apps configuration directory exists
+  ansible.builtin.file:
+    path: "{{ backup_config_dir }}/apps"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Deploy /etc/homelab/backup.env
+  ansible.builtin.template:
+    src: backup.env.j2
+    dest: "{{ backup_config_dir }}/backup.env"
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: Check if local inventory vault.yml exists
+  ansible.builtin.stat:
+    path: "{{ inventory_dir }}/group_vars/all/vault.yml"
+  delegate_to: localhost
+  register: local_vault_stat
+
+- name: Deploy /etc/homelab/vault.yml from local inventory
+  ansible.builtin.copy:
+    src: "{{ inventory_dir }}/group_vars/all/vault.yml"
+    dest: "{{ backup_config_dir }}/vault.yml"
+    owner: root
+    group: root
+    mode: "0600"
+  when: local_vault_stat.stat.exists
+
+- name: Ensure /etc/homelab/vault.yml permissions are 0600
+  ansible.builtin.file:
+    path: "{{ backup_config_dir }}/vault.yml"
+    owner: root
+    group: root
+    mode: "0600"
+  when: not local_vault_stat.stat.exists
+  failed_when: false
+
+- name: Deploy backup inclusion manifest
+  ansible.builtin.template:
+    src: backup-include.txt.j2
+    dest: "{{ backup_config_dir }}/backup-include.txt"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Deploy backup exclusion manifest
+  ansible.builtin.template:
+    src: backup-excludes.txt.j2
+    dest: "{{ backup_config_dir }}/backup-excludes.txt"
+    owner: root
+    group: root
+    mode: "0644"

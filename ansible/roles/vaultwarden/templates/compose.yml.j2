@@ -1,0 +1,26 @@
+# {{ ansible_managed }}
+version: "3.8"
+
+services:
+  vaultwarden:
+    image: {{ vaultwarden_image_tag }}
+    container_name: {{ vaultwarden_service_name }}
+    restart: unless-stopped
+    user: "{{ vaultwarden_user_uid }}:{{ vaultwarden_user_gid }}"
+    ports:
+      - "{{ vaultwarden_bind_address }}:{{ vaultwarden_internal_port }}:80"
+    volumes:
+      - {{ vaultwarden_data_dir }}:/data
+    env_file:
+      - .env
+    environment:
+      - WEBSOCKET_ENABLED={{ vaultwarden_websocket_enabled | lower }}
+      - ENABLE_DB_WAL={{ vaultwarden_enable_db_wal | lower }}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/alive"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    security_opt:
+      - no-new-privileges:true

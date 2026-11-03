@@ -1,0 +1,6 @@
+---
+docker_packages:
+  - docker
+  - docker-compose
+docker_service_state: started
+docker_service_enabled: true

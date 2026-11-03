@@ -18,6 +18,7 @@ admin_groups:
   - uucp
   - input
   - video
+  - docker
 
 # SSH Hardening & Security
 ssh_port: 22
@@ -72,4 +73,22 @@ caddy_conf_dir: "/etc/caddy/conf.d"
 storage_group: "storage"
 storage_gid: 1001
 snapraid_diff_deletion_threshold: 50
+
+# Container Runtime (Phase 5)
+docker_packages:
+  - docker
+  - docker-compose
+docker_service_state: "started"
+docker_service_enabled: true
+
+# Vaultwarden Application & Ingress (Phase 5)
+vaultwarden_domain: "https://vaultwarden.lan"
+vaultwarden_internal_port: 8088
+vaultwarden_signups_allowed: false
+vaultwarden_invitations_allowed: true
+vaultwarden_websocket_enabled: true
+vaultwarden_enable_db_wal: true
+vaultwarden_retention_days: 30
+
+
 

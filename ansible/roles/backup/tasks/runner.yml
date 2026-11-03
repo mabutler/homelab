@@ -1,0 +1,19 @@
+---
+# Runner tasks for backup role
+
+- name: Deploy backup runner script
+  ansible.builtin.template:
+    src: homelab-backup.j2
+    dest: "{{ backup_runner_path }}"
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Deploy standalone disaster recovery script
+  ansible.builtin.copy:
+    src: restore-from-b2.sh
+    dest: /usr/local/bin/restore-from-b2.sh
+    owner: root
+    group: root
+    mode: "0755"
+

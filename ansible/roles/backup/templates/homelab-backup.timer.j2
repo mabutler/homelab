@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily Homelab2 Backblaze B2 Backup Timer
+PartOf=homelab-backup.service
+
+[Timer]
+OnCalendar={{ backup_timer_on_calendar }}
+Persistent=true
+RandomizedDelaySec={{ backup_timer_randomized_delay_sec }}
+
+[Install]
+WantedBy=timers.target

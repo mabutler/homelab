@@ -378,16 +378,15 @@ flowchart LR
   - *Backup Gate*: Sunshine configuration, controller mappings, and virtual resolution presets committed to backup.
   - *Telemetry Gate*: Sunshine web admin UI reachable; GPU encoder session verified; stream FPS/latency stats logging operational.
 
-### Phase 7: Centralized Offsite Backups & Disaster Recovery Drills
-- **Primary Goal**: Consolidate intra-phase backups into a centralized, automated offsite repository with rehearsed disaster recovery drills.
+### Phase 7: Dedicated Local Backup Server & LAN Repositories
+- **Primary Goal**: Deploy or migrate to a local on-premises backup server (e.g., TrueNAS, MinIO, or Proxmox Backup Server) alongside the continuous Backblaze B2 offsite backup stream.
 - **Key Deliverables**:
-  - Centralized Restic orchestration uniting all individual application and system backup streams.
-  - Offsite encrypted replication target (e.g., Backblaze B2).
-  - Systemd timer units for daily deduplicated snapshots and periodic retention pruning.
-  - Documented and executed disaster recovery runbook: rebuilding the node end-to-end from git + backup.
+  - Local LAN backup target configuration with dual-replication policies.
+  - High-bandwidth local disaster recovery restore workflows (< 15 min).
+  - Reduced Backblaze B2 egress API usage by serving routine restores and drills from local storage.
 - **Phase 7 Completion Gates**:
-  - *Backup Gate*: Full disaster recovery drill executed in a VM or clean disk test, verifying complete system convergence in under 60 minutes.
-  - *Telemetry Gate*: Automated backup job exit codes, snapshot sizes, and pruning results tracked and alerted.
+  - *Backup Gate*: Local backup repository synchronized and validated with automated disaster recovery restore drill.
+  - *Telemetry Gate*: Dual-target replication success metrics and storage allocation alerts active.
 
 ### Phase 8: Platform Observability, Telemetry & Annual Maintenance Cadence
 - **Primary Goal**: Consolidate telemetry into a central observability dashboard and establish proactive failure alerts.

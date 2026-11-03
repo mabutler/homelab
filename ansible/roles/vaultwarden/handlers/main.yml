@@ -1,0 +1,14 @@
+---
+- name: Reload systemd
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: Restart vaultwarden
+  ansible.builtin.systemd:
+    name: vaultwarden
+    state: restarted
+
+- name: Reload vaultwarden
+  ansible.builtin.systemd:
+    name: vaultwarden
+    state: reloaded

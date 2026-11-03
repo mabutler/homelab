@@ -1,5 +1,7 @@
 # Global configuration block
 {
+    default_sni {{ caddy_default_sni | default('vaultwarden.lan') }}
+
     # Log configuration: structured output to stderr/journald
     log {
         output stderr

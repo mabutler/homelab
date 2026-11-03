@@ -1,0 +1,113 @@
+#!/usr/bin/env bash
+# {{ ansible_managed }}
+# Disaster recovery restoration runner for Vaultwarden
+set -euo pipefail
+
+SERVICE_DIR="{{ vaultwarden_service_dir }}"
+DATA_DIR="{{ vaultwarden_data_dir }}"
+USER_UID="{{ vaultwarden_user_uid }}"
+USER_GID="{{ vaultwarden_user_gid }}"
+PORT="{{ vaultwarden_internal_port | default(8088) }}"
+
+TARBALL=""
+FORCE=false
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --force)
+            FORCE=true
+            shift
+            ;;
+        *)
+            if [ -z "$TARBALL" ]; then
+                TARBALL="$1"
+            else
+                echo "Unknown argument: $1" >&2
+                exit 1
+            fi
+            shift
+            ;;
+    esac
+done
+
+if [ -z "$TARBALL" ]; then
+    echo "Usage: $0 <path-to-backup-tarball> [--force]" >&2
+    exit 1
+fi
+
+if [ ! -f "$TARBALL" ]; then
+    echo "ERROR: Backup archive not found: $TARBALL" >&2
+    exit 1
+fi
+
+if [ "$FORCE" != "true" ]; then
+    read -r -p "WARNING: Restoring will overwrite existing Vaultwarden data in $DATA_DIR. Continue? [y/N] " response
+    case "$response" in
+        [yY][eE][sS]|[yY])
+            ;;
+        *)
+            echo "Restoration aborted by operator."
+            exit 0
+            ;;
+    esac
+fi
+
+echo "Stopping vaultwarden service..."
+systemctl stop vaultwarden.service
+
+# Move current data directory to backup for rollback safety
+TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+if [ -d "$DATA_DIR" ]; then
+    BACKUP_DATA="$SERVICE_DIR/data.broken.$TIMESTAMP"
+    echo "Evacuating current data to $BACKUP_DATA..."
+    mv "$DATA_DIR" "$BACKUP_DATA"
+fi
+
+mkdir -p "$DATA_DIR"
+chmod 0750 "$DATA_DIR"
+
+echo "Extracting backup archive $TARBALL..."
+RESTORE_TMP=$(mktemp -d /tmp/vw-restore.XXXXXX)
+trap 'rm -rf "$RESTORE_TMP"' EXIT
+
+tar -xzf "$TARBALL" -C "$RESTORE_TMP"
+
+# Move snapshot to db.sqlite3
+if [ -f "$RESTORE_TMP/snapshot.sqlite3" ]; then
+    mv "$RESTORE_TMP/snapshot.sqlite3" "$DATA_DIR/db.sqlite3"
+elif [ -f "$RESTORE_TMP/db.sqlite3" ]; then
+    mv "$RESTORE_TMP/db.sqlite3" "$DATA_DIR/db.sqlite3"
+fi
+
+# Restore data directory files if packed with prefix data/
+if [ -d "$RESTORE_TMP/data" ]; then
+    cp -a "$RESTORE_TMP/data/." "$DATA_DIR/"
+fi
+
+# Fix ownership and permissions
+chown -R "$USER_UID:$USER_GID" "$DATA_DIR"
+chmod 0750 "$DATA_DIR"
+if [ -f "$DATA_DIR/db.sqlite3" ]; then
+    chmod 0640 "$DATA_DIR/db.sqlite3"
+fi
+
+echo "Starting vaultwarden service..."
+systemctl start vaultwarden.service
+
+echo "Verifying service health on http://127.0.0.1:$PORT/alive..."
+READY=false
+for i in {1..30}; do
+    if curl -fsS "http://127.0.0.1:$PORT/alive" >/dev/null 2>&1; then
+        READY=true
+        break
+    fi
+    sleep 1
+done
+
+if [ "$READY" = "true" ]; then
+    echo "SUCCESS: Vaultwarden restored and operational."
+    exit 0
+else
+    echo "ERROR: Vaultwarden service failed to respond HTTP 200 within 30 seconds." >&2
+    exit 1
+fi

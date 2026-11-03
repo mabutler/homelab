@@ -1,0 +1,15 @@
+[Unit]
+Description=Homelab2 Restic Repository Integrity Check
+Documentation=file:///docs/roadmap.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+EnvironmentFile={{ backup_config_dir }}/backup.env
+ExecStart={{ backup_runner_path }} check
+StandardOutput=journal
+StandardError=journal
+TimeoutSec=1800

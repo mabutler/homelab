@@ -1,0 +1,112 @@
+---
+- name: Homelab2 Centralized Backblaze B2 Backup Acceptance Verification
+  hosts: homelab_nodes
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: "BK-001: Assert restic binary is installed and operational"
+      ansible.builtin.command:
+        cmd: restic version
+      changed_when: false
+
+    - name: "BK-002: Assert /etc/homelab/backup.env permissions (0600 root:root)"
+      ansible.builtin.stat:
+        path: /etc/homelab/backup.env
+      register: bk02_env
+      failed_when: >
+        (not bk02_env.stat.exists) or
+        (bk02_env.stat.mode != "0600") or
+        (bk02_env.stat.pw_name != "root") or
+        (bk02_env.stat.gr_name != "root")
+
+    - name: "BK-003: Assert B2 cloud repository connectivity"
+      ansible.builtin.shell:
+        cmd: |
+          set -a
+          # shellcheck disable=SC1091
+          source /etc/homelab/backup.env
+          set +a
+          restic -r "$RESTIC_REPOSITORY" snapshots --json
+      changed_when: false
+
+    - name: "BK-004: Assert /etc/homelab/vault.yml is included in latest snapshot"
+      ansible.builtin.shell:
+        cmd: |
+          set -a
+          # shellcheck disable=SC1091
+          source /etc/homelab/backup.env
+          set +a
+          restic -r "$RESTIC_REPOSITORY" ls latest | grep -E '(^|/)etc/homelab/vault\.yml'
+      changed_when: false
+
+    - name: "BK-005: Assert live db.sqlite3 is excluded from latest snapshot"
+      ansible.builtin.shell:
+        cmd: |
+          set -a
+          # shellcheck disable=SC1091
+          source /etc/homelab/backup.env
+          set +a
+          ! restic -r "$RESTIC_REPOSITORY" ls latest | grep -E 'db\.sqlite3$'
+      changed_when: false
+
+    - name: "BK-006: Assert pre-backup hook and snapshot integrity check passes"
+      ansible.builtin.command:
+        cmd: /usr/local/bin/homelab-backup run --dry-run
+      changed_when: false
+
+    - name: "BK-007: Assert homelab-backup and integrity check timers are active"
+      ansible.builtin.systemd:
+        name: "{{ item }}"
+        state: started
+      check_mode: true
+      loop:
+        - homelab-backup.timer
+        - homelab-backup-check.timer
+      register: bk07_timers
+      failed_when: bk07_timers.status.ActiveState != "active"
+
+    - name: "BK-008: Assert non-destructive restore viability and vault.yml checksum match"
+      ansible.builtin.shell:
+        cmd: |
+          set -a
+          # shellcheck disable=SC1091
+          source /etc/homelab/backup.env
+          set +a
+          TARGET="/tmp/b2-test-restore"
+          rm -rf "$TARGET"
+          mkdir -p "$TARGET"
+          
+          RESTORE_SCRIPT=""
+          for s in /usr/local/bin/restore-from-b2.sh /tmp/homelab2-ansible/scripts/restore-from-b2.sh /opt/homelab2/scripts/restore-from-b2.sh /tmp/restore-from-b2.sh ./scripts/restore-from-b2.sh; do
+            if [ -x "$s" ]; then
+              RESTORE_SCRIPT="$s"
+              break
+            fi
+          done
+          
+          if [ -z "$RESTORE_SCRIPT" ]; then
+            echo "restore-from-b2.sh not found" >&2
+            exit 1
+          fi
+
+          "$RESTORE_SCRIPT" --target-dir "$TARGET" --include-path etc/homelab/vault.yml --force
+          
+          ORIG_SUM=$(sha256sum /etc/homelab/vault.yml | awk '{print $1}')
+          REST_SUM=$(sha256sum "$TARGET/etc/homelab/vault.yml" | awk '{print $1}')
+          rm -rf "$TARGET"
+          [ -n "$ORIG_SUM" ] && [ "$ORIG_SUM" = "$REST_SUM" ]
+      changed_when: false
+
+    - name: Display Phase 5 Backup verification summary
+      ansible.builtin.debug:
+        msg:
+          - "=== Phase 5 Backup & Disaster Recovery Verification Summary ==="
+          - "BK-001 Restic Installed: PASS"
+          - "BK-002 Env Permissions: PASS"
+          - "BK-003 B2 Connectivity: PASS"
+          - "BK-004 Secret Included: PASS"
+          - "BK-005 Live DB Excluded: PASS"
+          - "BK-006 Dry-Run & Pre-Hook: PASS"
+          - "BK-007 Timers Active: PASS"
+          - "BK-008 Restore Viability: PASS"

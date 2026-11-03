@@ -145,6 +145,76 @@
       register: snap_timers
       failed_when: snap_timers.status.ActiveState != "active"
 
+    # Phase 5 Vaultwarden Application Platform Assertions
+    - name: "VW-01: Assert Docker CE and Compose plugin operational"
+      ansible.builtin.shell:
+        cmd: "docker --version && docker compose version"
+      changed_when: false
+
+    - name: "VW-02: Assert Vaultwarden systemd service is active"
+      ansible.builtin.systemd:
+        name: vaultwarden
+        state: started
+      check_mode: true
+      register: vw02_service
+      failed_when: vw02_service.status.ActiveState != "active"
+
+    - name: "VW-03: Assert Vaultwarden data directory ownership and non-root process"
+      ansible.builtin.shell:
+        cmd: |
+          [ "$(stat -c '%u:%g' /opt/services/vaultwarden/data)" = "1000:1000" ] || exit 1
+          [ "$(stat -c '%a' /opt/services/vaultwarden/data)" = "750" ] || [ "$(stat -c '%a' /opt/services/vaultwarden/data)" = "700" ] || exit 1
+          PROC_USER=$(docker top vaultwarden 2>/dev/null | tail -n +2 | awk '{print $1}' | head -n1)
+          [ -n "$PROC_USER" ] && [ "$PROC_USER" != "0" ] && [ "$PROC_USER" != "root" ] || exit 1
+      changed_when: false
+
+    - name: "VW-04: Assert .env isolation permissions (0600)"
+      ansible.builtin.stat:
+        path: /opt/services/vaultwarden/.env
+      register: vw04_env
+      failed_when: (not vw04_env.stat.exists) or (vw04_env.stat.mode != "0600")
+
+    - name: "VW-05: Assert backend health probe http://127.0.0.1:8088/alive returns HTTP 200"
+      ansible.builtin.uri:
+        url: http://127.0.0.1:8088/alive
+        status_code: 200
+      register: vw05_backend
+      failed_when: vw05_backend.status != 200
+
+    - name: "VW-06: Assert Caddy reverse proxy HTTPS routing returns HTTP 200"
+      ansible.builtin.uri:
+        url: https://127.0.0.1/alive
+        headers:
+          Host: vaultwarden.lan
+        validate_certs: false
+        status_code: 200
+      register: vw06_ingress
+      failed_when: vw06_ingress.status != 200
+
+    - name: "VW-07: Assert WebSocket upgrade handshake on /notifications/hub"
+      ansible.builtin.shell:
+        cmd: |
+          curl --http1.1 -k -i -N \
+            -H "Connection: Upgrade" \
+            -H "Upgrade: websocket" \
+            -H "Host: vaultwarden.lan" \
+            -H "Sec-WebSocket-Key: SGVsbG8sIHdvcmxkIQ==" \
+            -H "Sec-WebSocket-Version: 13" \
+            --max-time 3 \
+            https://127.0.0.1/notifications/hub 2>&1 | grep -qiE "(101 Switching Protocols|Upgrade: websocket|Invalid claim|401 Unauthorized)"
+      changed_when: false
+
+    - name: "VW-08: Assert transactional backup execution and integrity"
+      ansible.builtin.command:
+        cmd: /opt/services/vaultwarden/scripts/backup.sh --force
+      changed_when: false
+
+    - name: "VW-09: Assert Vaultwarden backup integration hook is present and executable"
+      ansible.builtin.stat:
+        path: /etc/homelab/backup.d/10-vaultwarden.sh
+      register: vw09_hook
+      failed_when: (not vw09_hook.stat.exists) or (not vw09_hook.stat.executable)
+
     - name: Display verification summary report
       ansible.builtin.debug:
         msg:
@@ -164,3 +234,9 @@
           - "Scratch Isolation & NVMe Tier (STO-04, STO-05): PASS"
           - "Storage Group & Setgid (STO-06): PASS"
           - "SnapRAID Status & Timers (STO-07, STO-09): PASS"
+          - "Vaultwarden & Ingress (VW-01, VW-02, VW-05, VW-06): PASS"
+          - "Vaultwarden Security & Backups (VW-03, VW-04, VW-07, VW-08, VW-09): PASS"
+
+- import_playbook: verify-phase5-backup.yml
+
+

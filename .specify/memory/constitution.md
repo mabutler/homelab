@@ -1,12 +1,12 @@
 <!--
 Sync Impact Report:
-- Version Change: 1.1.0 -> 1.2.0
+- Version Change: 1.2.0 -> 1.3.0
 - Modified Principles:
-  - III. Automated Verification & Acceptance Gates (Exempted early bootstrap phases prior to full network setup from network-dependent telemetry requirements, restricting gate to local health assertions)
-  - V. Disaster Recovery & Backup by Design (Exempted early bootstrap phases prior to full network setup from backup/snapshot verification requirements until network access is established)
+  - IV. Zero Secrets in Version Control & Isolated Configuration (Prohibited committing secrets even in encrypted form; mandated committed *.example templates and gitignored real secret files, with automated recovery via encrypted offsite backups)
+  - V. Disaster Recovery & Backup by Design (Codified Backblaze B2 via Restic client-side encryption as the primary offsite backup target capturing both app data and gitignored secrets)
 - Modified Sections:
-  - Workflow & Quality Gates (Updated Continuous Backup & Telemetry Verification Gates to exempt early phases prior to full network setup)
-- Rationale: Materially amended operational gates to permit early bootstrap phases prior to full network setup to skip backup and telemetry requirements, recognizing that meaningful backup destinations and observability systems cannot function without network access.
+  - Workflow & Quality Gates (Explicitly included gitignored secret files and B2 snapshot verification in application and platform gates)
+- Rationale: Eliminated repository friction and potential leak surface of committed ciphertext by adopting gitignored secret files with committed *.example templates, ensuring complete disaster recovery via offsite encrypted Restic backups to Backblaze B2.
 -->
 
 # homelab2 Constitution
@@ -53,31 +53,37 @@ telemetry integration before that application can be declared complete.
 telemetry requires network connectivity, so early standalone bootstrap phases are exempt, but
 continuous telemetry verification is strictly enforced as soon as network access is established.*
 
-### IV. Zero Cleartext Secrets & Isolated Configuration
+### IV. Zero Secrets in Version Control & Isolated Configuration
 Sensitive parameters—including passwords, tokens, private keys, API credentials, and encryption
-keys—MUST NEVER be committed to version control in plaintext. Secrets MUST be encrypted at rest
-(using SOPS with age, Ansible Vault, or equivalent) or retrieved dynamically at runtime from an
-isolated secret store. Configuration templates MUST decouple secrets from environment definitions.
-Accidentally exposed cleartext credentials trigger immediate revocation, rotation, and git history
-cleanup.
+keys—MUST NEVER be committed to version control, whether in plaintext or encrypted ciphertext form.
+Version control MUST only commit template example files (`*.example`). Real secrets MUST reside
+exclusively in gitignored files (e.g., `ansible/inventory/group_vars/all/vault.yml`, `*.env`) on the
+local workstation and target server, and MUST be captured in encrypted offsite backups (via Restic
+client-side encryption to Backblaze B2) to enable automated disaster recovery without storing secrets
+in git. Configuration templates MUST decouple secrets from environment definitions. Accidentally
+exposed cleartext credentials trigger immediate revocation, rotation, and git history cleanup.
 
-*Rationale: Public or private repositories must remain secure by default against credential leakage
-and lateral access.*
+*Rationale: Public or private repositories must remain entirely free of secrets (both plaintext and
+encrypted blobs). Combining gitignored local files with client-side encrypted offsite backups guarantees
+security, eliminates repository friction, and preserves zero-toil disaster recovery.*
 
 ### V. Disaster Recovery & Backup by Design
-Every stateful service, configuration directory, and persistent dataset MUST define an automated
-backup schedule and a verified restoration procedure. Backup artifacts MUST be tested periodically
-for integrity. An untested backup MUST be considered non-existent. Disaster recovery procedures
-MUST allow recreating services on clean hardware or VMs using only the version-controlled repository
-and off-host backup stores. Early infrastructure phases prior to full network setup (e.g., initial
-bootstrap and base OS installation prior to network configuration) are EXEMPT from backup and
-snapshot readiness verification gates, as meaningful off-host or centralized backups require network
-access. Once full network connectivity is operational (Phase 3 onward), backup coverage and
-verification MUST NOT be deferred to an end-of-project milestone: each subsequent infrastructure
-phase MUST confirm its backup and snapshot readiness before completion. For Phase 5 (application
-platform), each individual application MUST confirm its backup strategy (e.g., automated database
-dump, persistent volume snapshot, or documented exclusion policy) before that application can be
-declared complete.
+Every stateful service, configuration directory, and persistent dataset—as well as the host's
+gitignored secret configurations—MUST define an automated backup schedule and a verified restoration
+procedure targeting Backblaze B2 via Restic client-side encryption. Backup artifacts MUST be tested
+periodically for integrity. An untested backup MUST be considered non-existent. Disaster recovery
+procedures MUST allow recreating services on clean hardware or VMs using only the clean version-controlled
+repository, the 4 bootstrap master keys (B2 account ID/key, repository URL, Restic password), and the
+offsite backup store. Early infrastructure phases prior to full network setup (e.g., initial bootstrap
+and base OS installation prior to network configuration) are EXEMPT from backup and snapshot readiness
+verification gates, as meaningful off-host or centralized backups require network access. Once full
+network connectivity is operational (Phase 3 onward), backup coverage and verification MUST NOT be
+deferred to an end-of-project milestone: each subsequent infrastructure phase MUST confirm its backup
+and snapshot readiness before completion. For Phase 5 (application platform), each individual application
+MUST confirm its backup strategy (e.g., automated transactional database dump, persistent volume snapshot,
+or documented exclusion policy) and its integration into the offsite Restic backup stream before that
+application can be declared complete. Phase 7 is reserved for migrating or adding a dedicated on-prem
+local backup server/repository alongside the offsite target.
 
 *Rationale: Hardware failures and configuration corruption are inevitable over time; requiring
 backup confirmation once network access is established eliminates blind spots without demanding
@@ -149,4 +155,4 @@ Core Principles and Operational Standards defined herein.
 - **Compliance Enforcement**: All Spec Kit artifacts (`spec.md`, `plan.md`, `tasks.md`) and code
   reviews MUST explicitly reference and verify adherence to these principles prior to implementation.
 
-**Version**: 1.2.0 | **Ratified**: 2026-10-11 | **Last Amended**: 2026-10-12
+**Version**: 1.3.0 | **Ratified**: 2026-10-11 | **Last Amended**: 2026-11-02

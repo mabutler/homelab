@@ -27,6 +27,17 @@
     mode: "0644"
   notify: Reload caddy
 
+- name: Deploy Vaultwarden ingress drop-in configuration
+  ansible.builtin.template:
+    src: 20-vaultwarden.caddy.j2
+    dest: "{{ caddy_conf_dir }}/20-vaultwarden.caddy"
+    owner: root
+    group: root
+    mode: "0644"
+    validate: "/usr/bin/caddy validate --adapter caddyfile --config %s"
+  notify: Reload caddy
+
+
 - name: Deploy main Caddyfile
   ansible.builtin.template:
     src: Caddyfile.j2

@@ -1,0 +1,31 @@
+---
+# Systemd service and timer tasks for backup role
+
+- name: Deploy homelab-backup systemd units
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "/etc/systemd/system/{{ item.dest }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - { src: homelab-backup.service.j2, dest: homelab-backup.service }
+    - { src: homelab-backup.timer.j2, dest: homelab-backup.timer }
+    - { src: homelab-backup-check.service.j2, dest: homelab-backup-check.service }
+    - { src: homelab-backup-check.timer.j2, dest: homelab-backup-check.timer }
+  notify:
+    - Systemd daemon-reload
+    - Restart homelab-backup timer
+    - Restart homelab-backup-check timer
+
+- name: Flush handlers to reload systemd units immediately
+  ansible.builtin.meta: flush_handlers
+
+- name: Enable and start homelab-backup and integrity check timers
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+  loop:
+    - homelab-backup.timer
+    - homelab-backup-check.timer

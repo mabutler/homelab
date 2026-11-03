@@ -1,0 +1,17 @@
+---
+# Main tasks orchestrator for backup role
+
+- name: Include package installation tasks
+  ansible.builtin.import_tasks: packages.yml
+
+- name: Include configuration and manifest tasks
+  ansible.builtin.import_tasks: config.yml
+
+- name: Include backup runner tasks
+  ansible.builtin.import_tasks: runner.yml
+
+- name: Include per-app backup hook tasks
+  ansible.builtin.import_tasks: hooks.yml
+
+- name: Include systemd service and timer tasks
+  ansible.builtin.import_tasks: service.yml

@@ -1,0 +1,40 @@
+---
+# Directory layout and prerequisite packages for vaultwarden
+
+- name: Install sqlite CLI utility for transactional backup verification
+  ansible.builtin.shell:
+    cmd: "pacman -Q sqlite >/dev/null 2>&1 || pacman -S --needed --noconfirm sqlite"
+  register: sqlite_pkg_install
+  changed_when: "'is up to date' not in sqlite_pkg_install.stdout and sqlite_pkg_install.stdout != ''"
+
+- name: Ensure Vaultwarden root service directory exists
+  ansible.builtin.file:
+    path: "{{ vaultwarden_service_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Ensure Vaultwarden data directory exists with restricted non-root ownership
+  ansible.builtin.file:
+    path: "{{ vaultwarden_data_dir }}"
+    state: directory
+    owner: "{{ vaultwarden_user_uid }}"
+    group: "{{ vaultwarden_user_gid }}"
+    mode: "0750"
+
+- name: Ensure Vaultwarden backup staging directory exists
+  ansible.builtin.file:
+    path: "{{ vaultwarden_backups_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0750"
+
+- name: Ensure Vaultwarden scripts directory exists
+  ansible.builtin.file:
+    path: "{{ vaultwarden_scripts_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"

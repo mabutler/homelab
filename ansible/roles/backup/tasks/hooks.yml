@@ -1,0 +1,18 @@
+---
+# Per-application backup hook tasks for backup role
+
+- name: Ensure /etc/homelab/backup.d directory exists
+  ansible.builtin.file:
+    path: "{{ backup_hook_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0750"
+
+- name: Deploy Vaultwarden backup integration hook
+  ansible.builtin.template:
+    src: 10-vaultwarden.sh.j2
+    dest: "{{ backup_hook_dir }}/10-vaultwarden.sh"
+    owner: root
+    group: root
+    mode: "0750"

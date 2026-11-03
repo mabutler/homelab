@@ -1,0 +1,26 @@
+---
+# Main task orchestrator for vaultwarden role
+
+- name: Include layout tasks
+  ansible.builtin.include_tasks: layout.yml
+  tags:
+    - vaultwarden
+    - vaultwarden_layout
+
+- name: Include config tasks
+  ansible.builtin.include_tasks: config.yml
+  tags:
+    - vaultwarden
+    - vaultwarden_config
+
+- name: Include service tasks
+  ansible.builtin.include_tasks: service.yml
+  tags:
+    - vaultwarden
+    - vaultwarden_service
+
+- name: Include backup tasks
+  ansible.builtin.include_tasks: backup.yml
+  tags:
+    - vaultwarden
+    - vaultwarden_backup

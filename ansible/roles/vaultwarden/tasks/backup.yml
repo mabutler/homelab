@@ -1,0 +1,42 @@
+---
+# Backup automation and disaster recovery tasks for vaultwarden
+# Standardized to rely on centralized /etc/homelab/backup.d/ hook per APP-BACKUP-V1
+
+- name: Deploy Vaultwarden transactional backup script
+  ansible.builtin.template:
+    src: backup.sh.j2
+    dest: "{{ vaultwarden_scripts_dir }}/backup.sh"
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Deploy Vaultwarden disaster recovery restore script
+  ansible.builtin.template:
+    src: restore.sh.j2
+    dest: "{{ vaultwarden_scripts_dir }}/restore.sh"
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Stop legacy local backup timer
+  ansible.builtin.systemd:
+    name: vaultwarden-backup.timer
+    state: stopped
+    enabled: false
+  failed_when: false
+
+- name: Stop legacy local backup service
+  ansible.builtin.systemd:
+    name: vaultwarden-backup.service
+    state: stopped
+    enabled: false
+  failed_when: false
+
+- name: Remove legacy backup systemd unit files
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/systemd/system/vaultwarden-backup.timer
+    - /etc/systemd/system/vaultwarden-backup.service
+  notify: Reload systemd

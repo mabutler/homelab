@@ -9,7 +9,7 @@ Thumbs.db
 # Logs
 *.log
 
-# Sensitive files / secrets & age private keys
+# Sensitive files / secrets & keys
 secrets/*.key
 secrets/*.id_ed25519
 !secrets/*.pub
@@ -17,8 +17,12 @@ secrets/*.id_ed25519
 *.key
 keys.txt
 age-key-qr.png
-!*.sops.yml
-!*.sops.yaml
+*.sops.yml
+ansible/inventory/group_vars/all/vault.yml
+*.secrets.yml
+*.env
+!*.env.example
+!*.yml.example
 
 # Ansible artifacts & cache
 .ansible/

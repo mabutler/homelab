@@ -1,0 +1,94 @@
+#!/usr/bin/env bash
+# {{ ansible_managed }}
+# Transactional backup execution for Vaultwarden
+set -euo pipefail
+
+SERVICE_DIR="{{ vaultwarden_service_dir }}"
+DATA_DIR="{{ vaultwarden_data_dir }}"
+BACKUP_DIR="{{ vaultwarden_backups_dir }}"
+RETENTION_DAYS="{{ vaultwarden_retention_days | default(30) }}"
+
+# Parse CLI arguments
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --retention-days)
+            RETENTION_DAYS="$2"
+            shift 2
+            ;;
+        --force)
+            shift
+            ;;
+        *)
+            echo "Unknown option: $1" >&2
+            exit 1
+            ;;
+    esac
+done
+
+# Pre-flight Checks
+if [ ! -f "$DATA_DIR/db.sqlite3" ]; then
+    echo "ERROR: Database file $DATA_DIR/db.sqlite3 not found." >&2
+    exit 1
+fi
+
+mkdir -p "$BACKUP_DIR"
+chmod 0750 "$BACKUP_DIR"
+
+TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+SNAPSHOT_PATH="$BACKUP_DIR/snapshot.sqlite3"
+rm -f "$SNAPSHOT_PATH"
+
+# Transactional Database Snapshot
+if ! sqlite3 "$DATA_DIR/db.sqlite3" "VACUUM INTO '$SNAPSHOT_PATH'"; then
+    echo "ERROR: SQLite VACUUM INTO snapshot failed." >&2
+    rm -f "$SNAPSHOT_PATH"
+    exit 2
+fi
+
+# Automated Integrity Verification
+CHECK_RESULT=$(sqlite3 "$SNAPSHOT_PATH" "PRAGMA integrity_check;")
+if [ "$CHECK_RESULT" != "ok" ]; then
+    echo "ERROR: Backup integrity check failed: $CHECK_RESULT" >&2
+    rm -f "$SNAPSHOT_PATH"
+    exit 3
+fi
+
+# Archive Packaging
+ARCHIVE_NAME="vaultwarden-backup-${TIMESTAMP}.tar.gz"
+ARCHIVE_PATH="$BACKUP_DIR/$ARCHIVE_NAME"
+
+EXTRA_ITEMS=()
+if [ -d "$DATA_DIR/attachments" ]; then
+    EXTRA_ITEMS+=("data/attachments")
+fi
+shopt -s nullglob
+RSA_KEYS=("$DATA_DIR"/rsa_key.*)
+shopt -u nullglob
+{% raw %}
+if [ ${#RSA_KEYS[@]} -gt 0 ]; then
+    for rsa in "${RSA_KEYS[@]}"; do
+        EXTRA_ITEMS+=("data/$(basename "$rsa")")
+    done
+fi
+
+if [ ${#EXTRA_ITEMS[@]} -gt 0 ]; then
+    tar -czf "$ARCHIVE_PATH" -C "$BACKUP_DIR" snapshot.sqlite3 -C "$SERVICE_DIR" "${EXTRA_ITEMS[@]}"
+else
+    tar -czf "$ARCHIVE_PATH" -C "$BACKUP_DIR" snapshot.sqlite3
+fi
+{% endraw %}
+if [ $? -ne 0 ]; then
+    echo "ERROR: Failed to package backup tarball." >&2
+    rm -f "$SNAPSHOT_PATH"
+    exit 4
+fi
+
+rm -f "$SNAPSHOT_PATH"
+chmod 0640 "$ARCHIVE_PATH"
+echo "Backup created successfully: $ARCHIVE_PATH"
+
+# Retention Pruning
+find "$BACKUP_DIR" -name "vaultwarden-backup-*.tar.gz" -type f -mtime +"$RETENTION_DAYS" -delete
+echo "Retention pruning completed for backups older than $RETENTION_DAYS days."
+
+exit 0

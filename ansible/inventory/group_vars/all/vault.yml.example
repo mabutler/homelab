@@ -1,0 +1,33 @@
+---
+# Example secrets template for homelab2
+# Copy this file to 'vault.yml' in the same directory and fill in your real secrets.
+# NEVER commit 'vault.yml' to version control (it is gitignored).
+
+# Administrative Operator
+vault_admin_username: "admin"
+
+# Password hash for emergency console login (optional / locked by default)
+# Generate with: mkpasswd -m sha-512
+vault_admin_password_hash: null
+
+# Authorized SSH public keys for administrative login
+vault_admin_authorized_keys:
+  - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI... operator@workstation"
+
+# Tailscale Auth Key (Phase 3)
+# Generate from Tailscale Admin Console -> Settings -> Keys
+vault_tailscale_auth_key: "tskey-auth-..."
+
+# Vaultwarden Administrative Token (Phase 5)
+# Argon2id hash of the admin portal password
+# Generate with: docker run --rm -it vaultwarden/server:1.32.7-alpine /vaultwarden hash
+vaultwarden_admin_token_hash: "$argon2id$v=19$m=65536,t=3,p=4$..."
+
+# Backblaze B2 & Restic Backup Secrets (Phase 5 / Offsite Backups)
+# From Backblaze B2 Console -> App Keys
+vault_b2_account_id: "00xxxxxxxxxxxxxxx"
+vault_b2_account_key: "K00xxxxxxxxxxxxxxxxxxxx"
+# Restic repository target, e.g. b2:my-homelab-backup-bucket:homelab2
+vault_restic_repository: "b2:your-b2-bucket-name:homelab2"
+# Strong passphrase used by Restic to encrypt backups client-side
+vault_restic_password: "replace-with-a-very-strong-restic-encryption-password"

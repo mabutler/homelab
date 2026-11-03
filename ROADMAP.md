@@ -25,9 +25,9 @@ flowchart LR
     P1["Phase 1: Base OS Bootstrap\n(Completed)"] --> P2["Phase 2: Core Hardening & IaC\n(Completed)"]
     P2 --> P3["Phase 3: Network & Remote Access\n(Completed)"]
     P3 --> P4["Phase 4: Storage Array & Pooling\n(Completed)"]
-    P4 --> P5["Phase 5: Application Platform\n(Next)"]
+    P4 --> P5["Phase 5: Application Platform &\nBackblaze Offsite Backups\n(In Progress)"]
     P5 --> P6["Phase 6: Game Streaming & GPU"]
-    P6 --> P7["Phase 7: Central Offsite Backups"]
+    P6 --> P7["Phase 7: Local Backup Server Migration"]
     P7 --> P8["Phase 8: Platform Telemetry & Ops"]
 
     style P1 fill:#16a34a,stroke:#15803d,color:#fff
@@ -41,19 +41,20 @@ flowchart LR
 ```
 
 - **Phase 1: Bare-Metal Live Bootstrap & Base OS Provisioning** *(Completed)*: Boot Arch live ISO, run idempotent bootstrap installer, reboot headlessly into verified SSH-ready target host. *Gates: Git profile recovery & pre/post-reboot health verification (internal bootstrap exception).*
-- **Phase 2: Base System Hardening & Configuration Management** *(Completed)*: Ansible setup, SOPS/age secrets integration, SSH hardening, sudo privileges, core diagnostic daemons, persistent udev hardware rules. *Gates: Vault/key backup & smartd/chrony/journald telemetry verified.*
+- **Phase 2: Base System Hardening & Configuration Management** *(Completed)*: Ansible setup, SSH hardening, sudo privileges, core diagnostic daemons, persistent udev hardware rules. Gitignored secrets with committed `*.example` templates. *Gates: Gitignored secrets posture & smartd/chrony/journald telemetry verified.*
 - **Phase 3: Network & Remote Access Overlay** *(Completed)*: Tailscale mesh VPN, nftables firewall, reverse proxy (Caddy) with modular drop-ins, automated ACME TLS, WebSocket upgrade support, and health check assertion suite. *Gates: TLS config backup, HTTP/Tailscale telemetry, and NET-01 through NET-08 verification.*
 - **Phase 4: Storage Pooling & Data Resiliency Layer** *(Completed)*: Multi-drive layout, MergerFS pool (`/mnt/storage`), SnapRAID parity snapshots, fast NVMe app tier (`/opt/services`), and isolated scratch path (`/mnt/scratch`). *Gates: Parity sync & MergerFS mount/diff telemetry, STO-01 through STO-10 verification passed.*
-- **Phase 5: Application Platform** *(Next)*: Rootless container stacks (Docker/Podman Compose). **Each app requires individual backup & telemetry verification:**
+- **Phase 5: Application Platform & Continuous Backblaze Backups** *(In Progress)*: Containerized service platform (Docker CE + Compose managed via systemd). Every stateful workload and host secret configuration is continuously backed up offsite to Backblaze B2 via Restic client-side encryption. **Each app requires individual backup & telemetry verification:**
+  - **Backblaze B2 & Restic Pipeline** *(Feature 006 - Completed & Verified)*: Centralized client-side encrypted backup service capturing `/etc/homelab/vault.yml`, host secrets, and all app snapshot streams with automated disaster recovery restore tooling. All 8 BK assertions verified passing.
+  - **Vaultwarden** *(Completed)*: Deployed on loopback `127.0.0.1:8088`, Caddy ingress `vaultwarden.lan` with internal TLS, transactional SQLite backup (`VACUUM INTO` + integrity check) with 30-day pruning, and systemd backup timer. Checks VW-01 through VW-09 verified.
   - **Home Assistant & ZWaveJS**: Backup (config + DB snapshot) & Telemetry (healthcheck, API endpoint, udev tracking).
   - **Immich**: Backup (`pg_dump` + photo sync) & Telemetry (server ping, ML status, GPU transcode metric).
   - **Frigate NVR**: Backup (event DB + config; CCTV excluded) & Telemetry (Coral latency, stream FPS, API check).
-  - **Vaultwarden**: Backup (transactional SQLite `.backup` dump) & Telemetry (`/alive` check, WebSocket status).
   - **FileBrowser**: Backup (DB + settings) & Telemetry (web response, storage mount assertion).
   - **Mealie, Vikunja, Memos**: Backup (individual DB/attachment dumps) & Telemetry (HTTP health endpoints).
   - **Arr Stack (Partial)**: Backup (app configs/DBs) & Telemetry (Gluetun VPN IP check, UI response).
 - **Phase 6: Steam Library & Local Game Streaming**: Dedicated fast game storage (`/mnt/games`), Sunshine game streaming server (NVENC/VAAPI, PipeWire, `uinput` virtual controllers), headless virtual display emulation for streaming to Steam Deck (1280x800 @ 90Hz) and TV box (4K). *Gates: Sunshine configs backup & encoder/stream telemetry.*
-- **Phase 7: Centralized Offsite Backups & Disaster Recovery Drills**: Restic/Borg encrypted offsite backups (Backblaze B2), daily systemd timers, tested disaster recovery runbooks. *Gates: Full < 60 min DR restore drill verification.*
+- **Phase 7: Dedicated Local Backup Server & LAN Repositories**: Migration or addition of a local on-premises backup server (e.g., TrueNAS, MinIO, or Proxmox Backup Server) to reduce Backblaze B2 egress costs and accelerate LAN disaster recovery drills (< 15 min). *Gates: Local repository sync & dual-target replication verification.*
 - **Phase 8: Platform Observability & Annual Maintenance**: Centralized dashboard, healthchecks, telemetry alerts, annual upgrade cadence. *Gates: Active failure simulation alert verification.*
 
 ---

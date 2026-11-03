@@ -1,0 +1,200 @@
+#!/usr/bin/env bash
+# /usr/local/bin/homelab-backup - Centralized Backup Runner for homelab2
+# Managed by Ansible - homelab2
+# Contract: BACKUP-RUNNER-V1
+set -euo pipefail
+
+CONFIG_FILE="{{ backup_config_dir }}/backup.env"
+INCLUDE_FILE="{{ backup_config_dir }}/backup-include.txt"
+EXCLUDE_FILE="{{ backup_config_dir }}/backup-excludes.txt"
+HOOK_DIR="{{ backup_hook_dir }}"
+
+KEEP_DAILY="{{ backup_keep_daily | default(7) }}"
+KEEP_WEEKLY="{{ backup_keep_weekly | default(5) }}"
+KEEP_MONTHLY="{{ backup_keep_monthly | default(12) }}"
+CHECK_SUBSET="{{ backup_check_data_subset | default('5%') }}"
+
+COMMAND="run"
+DRY_RUN=false
+VERBOSE=false
+
+show_help() {
+    cat << 'EOF'
+Usage: homelab-backup [COMMAND] [OPTIONS]
+
+Commands:
+  run          Execute pre-backup hooks, Restic backup, and retention pruning (default)
+  check        Execute repository integrity check (restic check --read-data-subset=...)
+  snapshots    List snapshots in Backblaze B2 repository
+  prune        Run retention policy pruning (restic forget --prune)
+  unlock       Remove stale locks from the repository (restic unlock)
+
+Options:
+  --dry-run          Simulate backup with pre-backup hooks and restic --dry-run
+  --verbose          Enable verbose output
+  --config-file PATH Path to environment credentials file (default: /etc/homelab/backup.env)
+  -h, --help         Show this help message
+EOF
+}
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        run|check|snapshots|prune|unlock)
+            COMMAND="$1"; shift ;;
+        --dry-run)
+            DRY_RUN=true; shift ;;
+        --verbose)
+            VERBOSE=true; shift ;;
+        --config-file)
+            CONFIG_FILE="$2"; shift 2 ;;
+        -h|--help)
+            show_help; exit 0 ;;
+        *)
+            echo "ERROR: Unknown option or command: $1" >&2
+            show_help
+            exit 1 ;;
+    esac
+done
+
+if [[ ! -f "$CONFIG_FILE" ]]; then
+    echo "ERROR: Configuration file not found at $CONFIG_FILE" >&2
+    exit 1
+fi
+
+set -a
+# shellcheck disable=SC1090
+source "$CONFIG_FILE"
+set +a
+
+if [[ -z "${B2_ACCOUNT_ID:-}" || -z "${B2_ACCOUNT_KEY:-}" || -z "${RESTIC_REPOSITORY:-}" || -z "${RESTIC_PASSWORD:-}" ]]; then
+    echo "ERROR: Missing required credentials in $CONFIG_FILE" >&2
+    exit 1
+fi
+
+export B2_ACCOUNT_ID
+export B2_ACCOUNT_KEY
+export RESTIC_REPOSITORY
+export RESTIC_PASSWORD
+
+run_pre_backup_hooks() {
+    if [[ -d "$HOOK_DIR" ]]; then
+        shopt -s nullglob
+        local hooks=("$HOOK_DIR"/*.sh)
+        shopt -u nullglob
+        if [ -n "${hooks[0]:-}" ] && [ -e "${hooks[0]}" ]; then
+            echo "[$(date -Iseconds)] Executing pre-backup hooks in $HOOK_DIR..."
+            for hook in "${hooks[@]}"; do
+                if [[ -x "$hook" ]]; then
+                    echo "[$(date -Iseconds)] Running hook: $hook pre-backup"
+                    if ! "$hook" pre-backup; then
+                        echo "ERROR: Pre-backup hook failed: $hook" >&2
+                        exit 2
+                    fi
+                fi
+            done
+        fi
+    fi
+}
+
+do_prune() {
+    if [[ "$DRY_RUN" == true ]]; then
+        echo "[$(date -Iseconds)] Skipping retention prune in dry-run mode."
+        return 0
+    fi
+
+    echo "[$(date -Iseconds)] Pruning repository retention (keep-daily $KEEP_DAILY, keep-weekly $KEEP_WEEKLY, keep-monthly $KEEP_MONTHLY)..."
+    local prune_cmd=(
+        "restic" "-r" "$RESTIC_REPOSITORY" "forget"
+        "--keep-daily" "$KEEP_DAILY"
+        "--keep-weekly" "$KEEP_WEEKLY"
+        "--keep-monthly" "$KEEP_MONTHLY"
+        "--prune"
+    )
+    if [[ "$VERBOSE" == true ]]; then
+        prune_cmd+=("--verbose")
+    fi
+
+    if ! "${prune_cmd[@]}"; then
+        echo "ERROR: Retention pruning failed" >&2
+        exit 4
+    fi
+    echo "[$(date -Iseconds)] Retention pruning completed successfully."
+}
+
+do_check() {
+    echo "[$(date -Iseconds)] Checking repository integrity with read-data-subset=$CHECK_SUBSET..."
+    local check_cmd=("restic" "-r" "$RESTIC_REPOSITORY" "check" "--read-data-subset=$CHECK_SUBSET")
+    if [[ "$VERBOSE" == true ]]; then
+        check_cmd+=("--verbose")
+    fi
+
+    if ! "${check_cmd[@]}"; then
+        echo "ERROR: Restic repository integrity check failed!" >&2
+        exit 5
+    fi
+    echo "[$(date -Iseconds)] Restic repository integrity check passed."
+}
+
+do_backup() {
+    run_pre_backup_hooks
+
+    if [[ ! -f "$INCLUDE_FILE" ]]; then
+        echo "ERROR: Inclusion manifest not found at $INCLUDE_FILE" >&2
+        exit 1
+    fi
+
+    local backup_cmd=("restic" "-r" "$RESTIC_REPOSITORY" "backup" "--files-from=$INCLUDE_FILE")
+    if [[ -f "$EXCLUDE_FILE" ]]; then
+        backup_cmd+=("--exclude-file=$EXCLUDE_FILE")
+    fi
+
+    backup_cmd+=("--tag" "homelab2" "--tag" "daily")
+
+    if [[ "$VERBOSE" == true ]]; then
+        backup_cmd+=("--verbose")
+    fi
+
+    if [[ "$DRY_RUN" == true ]]; then
+        backup_cmd+=("--dry-run")
+        echo "[$(date -Iseconds)] Executing Restic backup (dry-run)..."
+        if ! "${backup_cmd[@]}"; then
+            echo "ERROR: Restic dry-run backup failed" >&2
+            exit 3
+        fi
+        echo "[$(date -Iseconds)] Restic dry-run backup completed successfully."
+        return 0
+    fi
+
+    echo "[$(date -Iseconds)] Executing Restic backup to $RESTIC_REPOSITORY..."
+    if ! "${backup_cmd[@]}"; then
+        echo "ERROR: Restic backup failed" >&2
+        exit 3
+    fi
+    echo "[$(date -Iseconds)] Restic backup succeeded."
+
+    do_prune
+}
+
+case "$COMMAND" in
+    run)
+        do_backup
+        ;;
+    check)
+        do_check
+        ;;
+    prune)
+        do_prune
+        ;;
+    snapshots)
+        restic -r "$RESTIC_REPOSITORY" snapshots
+        ;;
+    unlock)
+        echo "[$(date -Iseconds)] Unlocking repository..."
+        restic -r "$RESTIC_REPOSITORY" unlock
+        ;;
+    *)
+        echo "ERROR: Unknown command $COMMAND" >&2
+        exit 1
+        ;;
+esac

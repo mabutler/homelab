@@ -5,39 +5,23 @@
   gather_facts: true
 
   pre_tasks:
-    - name: Resolve SOPS age key file path
-      ansible.builtin.set_fact:
-        effective_age_key_file: "{{ lookup('ansible.builtin.env', 'SOPS_AGE_KEY_FILE') | default('~/.config/sops/age/keys.txt', true) | expanduser }}"
-      delegate_to: localhost
-      run_once: true
-      tags:
-        - always
-
-    - name: Verify SOPS age private key exists on controller
+    - name: Verify vault.yml exists on controller
       ansible.builtin.stat:
-        path: "{{ effective_age_key_file }}"
-      register: age_key_stat
+        path: "{{ inventory_dir }}/group_vars/all/vault.yml"
+      register: vault_stat
       delegate_to: localhost
       run_once: true
       tags:
         - always
 
-    - name: Abort if SOPS age key file is missing
+    - name: Abort if vault.yml is missing
       ansible.builtin.fail:
         msg: >
-          CRITICAL ERROR: SOPS age key file '{{ effective_age_key_file }}' not found on controller.
-          Set SOPS_AGE_KEY_FILE or ensure '~/.config/sops/age/keys.txt' exists to decrypt secrets.
-      when: not age_key_stat.stat.exists
+          CRITICAL ERROR: '{{ inventory_dir }}/group_vars/all/vault.yml' not found.
+          Copy 'vault.yml.example' to 'vault.yml' and configure required secrets before running.
+      when: not vault_stat.stat.exists
       delegate_to: localhost
       run_once: true
-      tags:
-        - always
-
-    - name: Ingest SOPS-encrypted vault secrets
-      community.sops.load_vars:
-        file: "{{ inventory_dir }}/group_vars/all/vault.sops.yml"
-        age_keyfile: "{{ effective_age_key_file }}"
-      no_log: true
       tags:
         - always
 
@@ -115,3 +99,20 @@
         - storage
         - snapraid
         - parity
+
+    - role: docker
+      tags:
+        - docker
+        - containers
+
+    - role: vaultwarden
+      tags:
+        - vaultwarden
+        - app
+
+    - role: backup
+      tags:
+        - backup
+        - restic
+
+

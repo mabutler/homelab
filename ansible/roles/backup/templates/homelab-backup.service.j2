@@ -1,0 +1,15 @@
+[Unit]
+Description=Homelab2 Centralized Backblaze B2 Restic Backup
+Documentation=file:///docs/roadmap.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+EnvironmentFile={{ backup_config_dir }}/backup.env
+ExecStart={{ backup_runner_path }} run
+StandardOutput=journal
+StandardError=journal
+TimeoutSec=900

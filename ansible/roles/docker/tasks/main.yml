@@ -1,0 +1,22 @@
+---
+# tasks file for docker role
+
+- name: Install Docker and Docker Compose packages
+  ansible.builtin.shell:
+    cmd: "pacman -Q {{ item }} >/dev/null 2>&1 || pacman -S --needed --noconfirm {{ item }}"
+  loop: "{{ docker_packages }}"
+  register: docker_pkg_install
+  changed_when: "'is up to date' not in docker_pkg_install.stdout and docker_pkg_install.stdout != ''"
+
+- name: Ensure Docker service is enabled and started
+  ansible.builtin.systemd:
+    name: docker
+    state: "{{ docker_service_state }}"
+    enabled: "{{ docker_service_enabled }}"
+
+- name: Ensure administrative user is member of docker group
+  ansible.builtin.user:
+    name: "{{ admin_username | default('admin') }}"
+    groups: docker
+    append: true
+

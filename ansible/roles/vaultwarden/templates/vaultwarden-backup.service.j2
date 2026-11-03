@@ -1,0 +1,9 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Vaultwarden Daily Transactional Backup
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart={{ vaultwarden_scripts_dir }}/backup.sh
+User=root

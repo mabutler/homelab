@@ -1,0 +1,10 @@
+---
+# Package installation tasks for backup role
+
+- name: Install restic and sqlite packages via pacman
+  community.general.pacman:
+    name:
+      - restic
+      - sqlite
+    state: present
+    update_cache: false

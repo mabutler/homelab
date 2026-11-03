@@ -1,0 +1,16 @@
+---
+# Handlers for backup role
+
+- name: Systemd daemon-reload
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: Restart homelab-backup timer
+  ansible.builtin.systemd:
+    name: homelab-backup.timer
+    state: restarted
+
+- name: Restart homelab-backup-check timer
+  ansible.builtin.systemd:
+    name: homelab-backup-check.timer
+    state: restarted

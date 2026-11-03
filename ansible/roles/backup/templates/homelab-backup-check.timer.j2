@@ -1,0 +1,10 @@
+[Unit]
+Description=Weekly Homelab2 Restic Repository Integrity Check Timer
+PartOf=homelab-backup-check.service
+
+[Timer]
+OnCalendar={{ backup_check_timer_on_calendar }}
+Persistent=true
+
+[Install]
+WantedBy=timers.target
