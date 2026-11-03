@@ -27,16 +27,12 @@
     mode: "0644"
   notify: Reload caddy
 
-- name: Deploy Vaultwarden ingress drop-in configuration
-  ansible.builtin.template:
-    src: 20-vaultwarden.caddy.j2
-    dest: "{{ caddy_conf_dir }}/20-vaultwarden.caddy"
-    owner: root
-    group: root
-    mode: "0644"
-    validate: "/usr/bin/caddy validate --adapter caddyfile --config %s"
+- name: Remove deprecated Vaultwarden ingress drop-in configuration
+  ansible.builtin.file:
+    path: "{{ caddy_conf_dir }}/20-vaultwarden.caddy"
+    state: absent
+  when: not (caddy_manage_vaultwarden | default(false))
   notify: Reload caddy
-
 
 - name: Deploy main Caddyfile
   ansible.builtin.template:
@@ -47,6 +43,15 @@
     mode: "0644"
     validate: "/usr/bin/caddy validate --adapter caddyfile --config %s"
   notify: Reload caddy
+
+- name: Validate Caddy configuration syntax
+  ansible.builtin.command:
+    cmd: /usr/bin/caddy validate --adapter caddyfile --config /etc/caddy/Caddyfile
+  changed_when: false
+  check_mode: false
+
+- name: Flush handlers to apply Caddy configuration changes immediately
+  ansible.builtin.meta: flush_handlers
 
 - name: Enable and start caddy service
   ansible.builtin.systemd:

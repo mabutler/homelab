@@ -6,3 +6,5 @@ caddy_conf_dir: "/etc/caddy/conf.d"
 caddy_log_level: "INFO"
 caddy_service_state: "started"
 caddy_service_enabled: true
+caddy_manage_vaultwarden: false
+caddy_enable_wildcard_443: false

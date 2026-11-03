@@ -12,6 +12,8 @@
     }
 }
 
+{% if caddy_enable_wildcard_443 | default(false) %}
+
 :443 {
     tls internal
     handle /health {
@@ -21,4 +23,5 @@
         respond "Homelab Ingress Ready" 200
     }
 }
+{% endif %}
 
