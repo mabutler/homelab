@@ -1,0 +1,104 @@
+---
+# Tasks for antigravity role: Authentication profile seeding & interactive fallback
+
+- name: Check if target host already has oauth_creds.json
+  ansible.builtin.stat:
+    path: "{{ antigravity_oauth_creds_path }}"
+  register: target_oauth_creds
+
+- name: Check for local controller seed credentials
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop:
+    - "{{ antigravity_local_oauth_creds }}"
+    - "{{ lookup('env', 'HOME') }}/.gemini/oauth_creds.json"
+    - "{{ lookup('env', 'USERPROFILE') }}/.gemini/oauth_creds.json"
+  delegate_to: localhost
+  become: false
+  register: local_oauth_stat
+  when: not target_oauth_creds.stat.exists
+
+- name: Determine first available local oauth credentials file
+  ansible.builtin.set_fact:
+    available_local_oauth: "{{ (local_oauth_stat.results | default([]) | selectattr('stat.exists', 'defined') | selectattr('stat.exists', 'equalto', true) | map(attribute='item') | list | first) | default('') }}"
+  when: not target_oauth_creds.stat.exists
+
+- name: Deploy seeded oauth_creds.json to target host
+  ansible.builtin.copy:
+    src: "{{ available_local_oauth }}"
+    dest: "{{ antigravity_oauth_creds_path }}"
+    owner: "{{ antigravity_operator_user }}"
+    group: "{{ antigravity_operator_group }}"
+    mode: '0600'
+  become: true
+  when:
+    - not target_oauth_creds.stat.exists
+    - available_local_oauth != ''
+  tags:
+    - antigravity
+    - auth
+
+- name: Check for local controller google_accounts.json
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop:
+    - "{{ antigravity_local_google_accounts }}"
+    - "{{ lookup('env', 'HOME') }}/.gemini/google_accounts.json"
+    - "{{ lookup('env', 'USERPROFILE') }}/.gemini/google_accounts.json"
+  delegate_to: localhost
+  become: false
+  register: local_accounts_stat
+  when: not target_oauth_creds.stat.exists
+
+- name: Determine first available local google_accounts file
+  ansible.builtin.set_fact:
+    available_local_accounts: "{{ (local_accounts_stat.results | default([]) | selectattr('stat.exists', 'defined') | selectattr('stat.exists', 'equalto', true) | map(attribute='item') | list | first) | default('') }}"
+  when: not target_oauth_creds.stat.exists
+
+- name: Deploy seeded google_accounts.json to target host
+  ansible.builtin.copy:
+    src: "{{ available_local_accounts }}"
+    dest: "{{ antigravity_google_accounts_path }}"
+    owner: "{{ antigravity_operator_user }}"
+    group: "{{ antigravity_operator_group }}"
+    mode: '0600'
+  become: true
+  when:
+    - not target_oauth_creds.stat.exists
+    - available_local_accounts != ''
+  tags:
+    - antigravity
+    - auth
+
+- name: Check if credentials exist now
+  ansible.builtin.stat:
+    path: "{{ antigravity_oauth_creds_path }}"
+  register: post_oauth_stat
+
+- name: Display fallback authentication instructions if no credentials seeded
+  ansible.builtin.debug:
+    msg:
+      - "WARNING: No existing Google Antigravity OAuth credentials found on target or controller."
+      - "To complete authentication interactively, SSH into {{ inventory_hostname }} as {{ antigravity_operator_user }} and run:"
+      - "  agy auth login"
+      - "Once authenticated in your browser, rerun this playbook to enable the background daemon."
+  when: not post_oauth_stat.stat.exists
+  tags:
+    - antigravity
+    - auth
+
+- name: Enforce strict file permissions on existing credentials
+  ansible.builtin.file:
+    path: "{{ item }}"
+    owner: "{{ antigravity_operator_user }}"
+    group: "{{ antigravity_operator_group }}"
+    mode: '0600'
+    state: file
+  loop:
+    - "{{ antigravity_oauth_creds_path }}"
+    - "{{ antigravity_google_accounts_path }}"
+  become: true
+  ignore_errors: true
+  tags:
+    - antigravity
+    - auth

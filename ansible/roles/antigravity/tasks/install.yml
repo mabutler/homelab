@@ -1,0 +1,90 @@
+---
+# Tasks for antigravity role: Installation of prerequisites & Antigravity CLI
+
+- name: Install prerequisite packages for Antigravity & Remote Control
+  ansible.builtin.shell:
+    cmd: "pacman -S --needed --noconfirm curl jq git openssh"
+  become: true
+  changed_when: false
+  tags:
+    - antigravity
+    - install
+    - prerequisites
+
+- name: Ensure operator group exists
+  ansible.builtin.group:
+    name: "{{ antigravity_operator_group }}"
+    state: present
+  become: true
+  tags:
+    - antigravity
+    - install
+
+- name: Ensure operator user belongs to operator group
+  ansible.builtin.user:
+    name: "{{ antigravity_operator_user }}"
+    groups: "{{ antigravity_operator_group }}"
+    append: true
+  become: true
+  tags:
+    - antigravity
+    - install
+
+- name: Check if Antigravity CLI (agy) is already installed
+  ansible.builtin.shell:
+    cmd: "command -v agy && agy --version"
+  register: agy_check
+  failed_when: false
+  changed_when: false
+  become: true
+  become_user: "{{ antigravity_operator_user }}"
+  tags:
+    - antigravity
+    - install
+
+- name: Ensure operator local bin directory exists
+  ansible.builtin.file:
+    path: "{{ antigravity_binary_dir }}"
+    state: directory
+    owner: "{{ antigravity_operator_user }}"
+    group: "{{ antigravity_operator_group }}"
+    mode: '0755'
+  become: true
+  tags:
+    - antigravity
+    - install
+
+- name: Download and install Google Antigravity CLI
+  ansible.builtin.shell:
+    cmd: "curl -fsSL https://antigravity.google/cli/install.sh | bash"
+  become: true
+  become_user: "{{ antigravity_operator_user }}"
+  when: agy_check.rc != 0
+  changed_when: true
+  tags:
+    - antigravity
+    - install
+
+- name: Ensure agy binary has correct permissions
+  ansible.builtin.file:
+    path: "{{ antigravity_binary_path }}"
+    state: file
+    owner: "{{ antigravity_operator_user }}"
+    group: "{{ antigravity_operator_group }}"
+    mode: '0755'
+  become: true
+  when: agy_check.rc == 0 or not ansible_check_mode
+  tags:
+    - antigravity
+    - install
+
+- name: Create system-wide symlink for agy binary
+  ansible.builtin.file:
+    src: "{{ antigravity_binary_path }}"
+    dest: "{{ antigravity_system_symlink }}"
+    state: link
+    force: true
+  become: true
+  tags:
+    - antigravity
+    - install

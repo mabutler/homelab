@@ -115,3 +115,9 @@
         - storage
         - snapraid
         - parity
+
+    - role: antigravity
+      tags:
+        - antigravity
+        - remote_control
+        - agent

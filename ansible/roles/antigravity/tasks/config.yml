@@ -1,0 +1,63 @@
+---
+# Tasks for antigravity role: Directory structure & settings configuration
+
+- name: Ensure operator local bin directory exists with correct permissions
+  ansible.builtin.file:
+    path: "{{ antigravity_binary_dir }}"
+    state: directory
+    owner: "{{ antigravity_operator_user }}"
+    group: "{{ antigravity_operator_group }}"
+    mode: '0755'
+  become: true
+  tags:
+    - antigravity
+    - config
+
+- name: Ensure operator Gemini profile directory exists with private permissions
+  ansible.builtin.file:
+    path: "{{ antigravity_profile_dir }}"
+    state: directory
+    owner: "{{ antigravity_operator_user }}"
+    group: "{{ antigravity_operator_group }}"
+    mode: '0700'
+  become: true
+  tags:
+    - antigravity
+    - config
+
+- name: Ensure operator Antigravity CLI config directory exists with private permissions
+  ansible.builtin.file:
+    path: "{{ antigravity_config_dir }}"
+    state: directory
+    owner: "{{ antigravity_operator_user }}"
+    group: "{{ antigravity_operator_group }}"
+    mode: '0700'
+  become: true
+  tags:
+    - antigravity
+    - config
+
+- name: Ensure operator SSH directory exists with private permissions
+  ansible.builtin.file:
+    path: "{{ antigravity_ssh_dir }}"
+    state: directory
+    owner: "{{ antigravity_operator_user }}"
+    group: "{{ antigravity_operator_group }}"
+    mode: '0700'
+  become: true
+  tags:
+    - antigravity
+    - config
+
+- name: Deploy autonomous settings.json configuration
+  ansible.builtin.template:
+    src: settings.json.j2
+    dest: "{{ antigravity_settings_path }}"
+    owner: "{{ antigravity_operator_user }}"
+    group: "{{ antigravity_operator_group }}"
+    mode: '0600'
+  become: true
+  notify: Restart agy-remote-control service
+  tags:
+    - antigravity
+    - config

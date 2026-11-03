@@ -14,6 +14,13 @@ secrets/*.key
 secrets/*.id_ed25519
 !secrets/*.pub
 !secrets/.gitkeep
+secrets/antigravity/oauth_creds.json
+secrets/antigravity/google_accounts.json
+secrets/ssh/id_ed25519_github
+!secrets/ssh/id_ed25519_github.pub
+ansible/inventory/group_vars/all/vault.yml
+oauth_creds.json
+google_accounts.json
 *.key
 keys.txt
 age-key-qr.png

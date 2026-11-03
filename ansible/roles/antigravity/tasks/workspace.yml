@@ -1,0 +1,176 @@
+---
+# Tasks for antigravity role: Host project workspace, SSH deploy keys & passwordless sudo
+
+- name: Check if target host already has github ssh deploy key
+  ansible.builtin.stat:
+    path: "{{ antigravity_ssh_key_path }}"
+  register: target_ssh_key
+
+- name: Check for local controller seed deploy key
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop:
+    - "{{ antigravity_local_ssh_key }}"
+    - "{{ lookup('env', 'HOME') }}/.ssh/id_ed25519_github"
+    - "{{ lookup('env', 'USERPROFILE') }}/.ssh/id_ed25519_github"
+  delegate_to: localhost
+  become: false
+  register: local_ssh_stat
+  when: not target_ssh_key.stat.exists
+
+- name: Determine first available local deploy key
+  ansible.builtin.set_fact:
+    available_local_ssh_key: "{{ (local_ssh_stat.results | default([]) | selectattr('stat.exists', 'defined') | selectattr('stat.exists', 'equalto', true) | map(attribute='item') | list | first) | default('') }}"
+  when: not target_ssh_key.stat.exists
+
+- name: Deploy seeded GitHub deploy key to target host
+  ansible.builtin.copy:
+    src: "{{ available_local_ssh_key }}"
+    dest: "{{ antigravity_ssh_key_path }}"
+    owner: "{{ antigravity_operator_user }}"
+    group: "{{ antigravity_operator_group }}"
+    mode: '0600'
+  become: true
+  when:
+    - not target_ssh_key.stat.exists
+    - available_local_ssh_key != ''
+  tags:
+    - antigravity
+    - workspace
+    - ssh
+
+- name: Generate dedicated GitHub ed25519 deploy key on target if none exists
+  ansible.builtin.command:
+    cmd: "ssh-keygen -t ed25519 -f {{ antigravity_ssh_key_path }} -N '' -C 'homelab2-deploy-key'"
+  become: true
+  become_user: "{{ antigravity_operator_user }}"
+  when:
+    - not target_ssh_key.stat.exists
+    - available_local_ssh_key == ''
+  tags:
+    - antigravity
+    - workspace
+    - ssh
+
+- name: Enforce strict file permissions on GitHub deploy keys
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    owner: "{{ antigravity_operator_user }}"
+    group: "{{ antigravity_operator_group }}"
+    mode: "{{ item.mode }}"
+    state: file
+  loop:
+    - { path: "{{ antigravity_ssh_key_path }}", mode: '0600' }
+    - { path: "{{ antigravity_ssh_pub_path }}", mode: '0644' }
+  become: true
+  ignore_errors: true
+  tags:
+    - antigravity
+    - workspace
+    - ssh
+
+- name: Configure SSH client config for github.com
+  ansible.builtin.blockinfile:
+    path: "{{ antigravity_ssh_config_path }}"
+    create: true
+    owner: "{{ antigravity_operator_user }}"
+    group: "{{ antigravity_operator_group }}"
+    mode: '0600'
+    marker: "# {mark} ANSIBLE MANAGED BLOCK (ANTIGRAVITY GITHUB SSH)"
+    block: |
+      Host github.com
+          HostName github.com
+          User git
+          IdentityFile ~/.ssh/id_ed25519_github
+          IdentitiesOnly yes
+          StrictHostKeyChecking accept-new
+  become: true
+  tags:
+    - antigravity
+    - workspace
+    - ssh
+
+- name: Configure Git global author name
+  community.general.git_config:
+    name: user.name
+    value: "{{ antigravity_git_user_name }}"
+    scope: global
+  become: true
+  become_user: "{{ antigravity_operator_user }}"
+  tags:
+    - antigravity
+    - workspace
+    - git
+
+- name: Configure Git global author email
+  community.general.git_config:
+    name: user.email
+    value: "{{ antigravity_git_user_email }}"
+    scope: global
+  become: true
+  become_user: "{{ antigravity_operator_user }}"
+  tags:
+    - antigravity
+    - workspace
+    - git
+
+- name: Check if workspace directory is an existing Git repository
+  ansible.builtin.stat:
+    path: "{{ antigravity_workspace_root }}/.git"
+  register: git_repo_check
+  become: true
+  tags:
+    - antigravity
+    - workspace
+
+- name: Clone homelab2 repository to workspace root if not present
+  ansible.builtin.git:
+    repo: "{{ antigravity_git_remote_url }}"
+    dest: "{{ antigravity_workspace_root }}"
+    accept_hostkey: true
+  become: true
+  become_user: "{{ antigravity_operator_user }}"
+  when: not git_repo_check.stat.exists
+  tags:
+    - antigravity
+    - workspace
+
+- name: Ensure workspace directory ownership and permissions
+  ansible.builtin.file:
+    path: "{{ antigravity_workspace_root }}"
+    state: directory
+    owner: "{{ antigravity_operator_user }}"
+    group: "{{ antigravity_operator_group }}"
+    mode: '0755'
+  become: true
+  tags:
+    - antigravity
+    - workspace
+
+- name: Ensure worktrees directory exists
+  ansible.builtin.file:
+    path: "{{ antigravity_worktrees_dir }}"
+    state: directory
+    owner: "{{ antigravity_operator_user }}"
+    group: "{{ antigravity_operator_group }}"
+    mode: '0755'
+  become: true
+  tags:
+    - antigravity
+    - workspace
+
+- name: Configure passwordless sudo drop-in for operator
+  ansible.builtin.copy:
+    content: |
+      # Managed by Ansible for Antigravity autonomous execution
+      {{ antigravity_operator_user }} ALL=(ALL) NOPASSWD: ALL
+    dest: /etc/sudoers.d/99-homelab-admin
+    owner: root
+    group: root
+    mode: '0440'
+    validate: '/usr/sbin/visudo -cf %s'
+  become: true
+  tags:
+    - antigravity
+    - workspace
+    - sudo

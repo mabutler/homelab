@@ -1,0 +1,23 @@
+---
+# Handlers for antigravity role
+
+- name: Systemd user daemon-reload
+  ansible.builtin.command:
+    cmd: systemctl --user daemon-reload
+  become: true
+  become_user: "{{ antigravity_operator_user }}"
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/1000"
+    DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/1000/bus"
+  changed_when: true
+
+- name: Restart agy-remote-control service
+  ansible.builtin.systemd_service:
+    name: "{{ antigravity_service_unit }}"
+    state: restarted
+    scope: user
+  become: true
+  become_user: "{{ antigravity_operator_user }}"
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/1000"
+    DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/1000/bus"

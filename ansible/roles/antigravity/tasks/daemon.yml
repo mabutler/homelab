@@ -1,0 +1,113 @@
+---
+# Tasks for antigravity role: User lingering & systemd user service registration
+
+- name: Check if user lingering is enabled for operator
+  ansible.builtin.stat:
+    path: "/var/lib/systemd/linger/{{ antigravity_operator_user }}"
+  register: linger_stat
+  become: true
+  tags:
+    - antigravity
+    - daemon
+    - linger
+
+- name: Enable systemd user session lingering for operator
+  ansible.builtin.command:
+    cmd: "loginctl enable-linger {{ antigravity_operator_user }}"
+  become: true
+  when: not linger_stat.stat.exists
+  tags:
+    - antigravity
+    - daemon
+    - linger
+
+- name: Verify user lingering marker exists
+  ansible.builtin.stat:
+    path: "/var/lib/systemd/linger/{{ antigravity_operator_user }}"
+  register: verify_linger
+  failed_when: not verify_linger.stat.exists
+  become: true
+  tags:
+    - antigravity
+    - daemon
+    - linger
+
+- name: Ensure systemd user configuration directory exists
+  ansible.builtin.file:
+    path: "{{ antigravity_operator_home }}/.config/systemd/user"
+    state: directory
+    owner: "{{ antigravity_operator_user }}"
+    group: "{{ antigravity_operator_group }}"
+    mode: '0755'
+  become: true
+  tags:
+    - antigravity
+    - daemon
+
+- name: Deploy systemd user service unit for Antigravity Remote Control
+  ansible.builtin.template:
+    src: agy-remote-control.service.j2
+    dest: "{{ antigravity_operator_home }}/.config/systemd/user/{{ antigravity_service_unit }}"
+    owner: "{{ antigravity_operator_user }}"
+    group: "{{ antigravity_operator_group }}"
+    mode: '0644'
+  become: true
+  notify:
+    - Systemd user daemon-reload
+    - Restart agy-remote-control service
+  tags:
+    - antigravity
+    - daemon
+
+- name: Flush handlers to reload systemd user daemon if unit changed
+  ansible.builtin.meta: flush_handlers
+  tags:
+    - antigravity
+    - daemon
+
+- name: Check if Google OAuth credentials exist before starting daemon
+  ansible.builtin.stat:
+    path: "{{ antigravity_oauth_creds_path }}"
+  register: oauth_check
+  become: true
+  tags:
+    - antigravity
+    - daemon
+
+- name: Query operator numeric UID
+  ansible.builtin.command:
+    cmd: "id -u {{ antigravity_operator_user }}"
+  register: operator_uid_cmd
+  changed_when: false
+  become: true
+  tags:
+    - antigravity
+    - daemon
+
+- name: Register and start Antigravity Remote Control daemon
+  ansible.builtin.command:
+    cmd: "agy remote-control start --name {{ antigravity_instance_name }}"
+  become: true
+  become_user: "{{ antigravity_operator_user }}"
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ operator_uid_cmd.stdout | default('1000') }}"
+    DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ operator_uid_cmd.stdout | default('1000') }}/bus"
+    PATH: "{{ antigravity_binary_dir }}:/usr/local/bin:/usr/bin:/bin"
+  register: agy_remote_start
+  changed_when: "'started' in agy_remote_start.stdout"
+  when: oauth_check.stat.exists
+  tags:
+    - antigravity
+    - daemon
+
+- name: Create compatibility alias symlink for agy-remote-control.service
+  ansible.builtin.file:
+    src: "{{ antigravity_operator_home }}/.config/systemd/user/antigravity-cli-daemon.service"
+    dest: "{{ antigravity_operator_home }}/.config/systemd/user/{{ antigravity_service_unit }}"
+    state: link
+    force: true
+  become: true
+  become_user: "{{ antigravity_operator_user }}"
+  tags:
+    - antigravity
+    - daemon

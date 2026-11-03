@@ -1,0 +1,38 @@
+---
+# Master orchestrator for role antigravity
+
+- name: Import installation tasks
+  ansible.builtin.import_tasks: install.yml
+  tags:
+    - antigravity
+    - install
+
+- name: Import directory structure and configuration tasks
+  ansible.builtin.import_tasks: config.yml
+  tags:
+    - antigravity
+    - config
+
+- name: Import authentication and credential management tasks
+  ansible.builtin.import_tasks: auth.yml
+  tags:
+    - antigravity
+    - auth
+
+- name: Import lingering and systemd daemon management tasks
+  ansible.builtin.import_tasks: daemon.yml
+  tags:
+    - antigravity
+    - daemon
+
+- name: Import host workspace and Git deployment tasks
+  ansible.builtin.import_tasks: workspace.yml
+  tags:
+    - antigravity
+    - workspace
+
+- name: Import backup manifest registration tasks
+  ansible.builtin.import_tasks: backup.yml
+  tags:
+    - antigravity
+    - backup

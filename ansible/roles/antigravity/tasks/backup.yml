@@ -1,0 +1,76 @@
+---
+# Tasks for antigravity role: Centralized backup manifest integration
+
+- name: Ensure /etc/homelab directory exists
+  ansible.builtin.file:
+    path: /etc/homelab
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  become: true
+  tags:
+    - antigravity
+    - backup
+
+- name: Ensure backup-include.txt exists
+  ansible.builtin.file:
+    path: "{{ antigravity_backup_include_path }}"
+    state: touch
+    owner: root
+    group: root
+    mode: '0644'
+    modification_time: preserve
+    access_time: preserve
+  become: true
+  tags:
+    - antigravity
+    - backup
+
+- name: Register Antigravity inclusions in /etc/homelab/backup-include.txt
+  ansible.builtin.lineinfile:
+    path: "{{ antigravity_backup_include_path }}"
+    line: "{{ item }}"
+    state: present
+  loop:
+    - "/home/admin/.gemini/oauth_creds.json"
+    - "/home/admin/.gemini/google_accounts.json"
+    - "/home/admin/.gemini/antigravity-cli/settings.json"
+    - "/home/admin/.ssh/id_ed25519_github"
+    - "/home/admin/.ssh/id_ed25519_github.pub"
+  become: true
+  tags:
+    - antigravity
+    - backup
+
+- name: Ensure backup-excludes.txt exists
+  ansible.builtin.file:
+    path: "{{ antigravity_backup_exclude_path }}"
+    state: touch
+    owner: root
+    group: root
+    mode: '0644'
+    modification_time: preserve
+    access_time: preserve
+  become: true
+  tags:
+    - antigravity
+    - backup
+
+- name: Register Antigravity exclusions in /etc/homelab/backup-excludes.txt
+  ansible.builtin.lineinfile:
+    path: "{{ antigravity_backup_exclude_path }}"
+    line: "{{ item }}"
+    state: present
+  loop:
+    - "/home/admin/.gemini/antigravity-cli/cache/**"
+    - "/home/admin/.gemini/antigravity-cli/crashes/**"
+    - "/home/admin/.gemini/antigravity-cli/log/**"
+    - "/home/admin/.gemini/antigravity-cli/updater/**"
+    - "/home/admin/.gemini/antigravity-cli/brain/**"
+    - "/home/admin/.gemini/tmp/**"
+    - "/home/admin/homelab2/.git/**"
+  become: true
+  tags:
+    - antigravity
+    - backup

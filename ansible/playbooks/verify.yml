@@ -164,3 +164,7 @@
           - "Scratch Isolation & NVMe Tier (STO-04, STO-05): PASS"
           - "Storage Group & Setgid (STO-06): PASS"
           - "SnapRAID Status & Timers (STO-07, STO-09): PASS"
+
+- name: Import Feature 007 Antigravity Verification Playbook
+  ansible.builtin.import_playbook: verify-phase7-antigravity.yml
+
