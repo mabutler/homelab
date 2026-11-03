@@ -5,6 +5,20 @@
   gather_facts: false
 
   tasks:
+    - name: Query Tailscale status for dynamic FQDN discovery
+      ansible.builtin.command:
+        cmd: tailscale status --json
+      register: tailscale_status_raw
+      changed_when: false
+
+    - name: Discover Tailscale node FQDN
+      ansible.builtin.set_fact:
+        tailscale_discovered_fqdn: >-
+          {{
+            ((tailscale_status_raw.stdout | from_json).CertDomains | default([]) | first) |
+            default((((tailscale_status_raw.stdout | from_json).Self.DNSName | default('')).rstrip('.')), true)
+          }}
+
     - name: "VW-01: Assert Docker CE and Compose plugin operational"
       ansible.builtin.shell:
         cmd: "docker --version && docker compose version"
@@ -20,8 +34,10 @@
       failed_when: vw02_service.status.ActiveState != "active"
 
     - name: "VW-03: Assert Vaultwarden data directory ownership and non-root process"
+      # noqa: risky-shell-pipe
       ansible.builtin.shell:
         cmd: |
+          set -o pipefail
           [ "$(stat -c '%u:%g' /opt/services/vaultwarden/data)" = "1000:1000" ] || exit 1
           [ "$(stat -c '%a' /opt/services/vaultwarden/data)" = "750" ] || [ "$(stat -c '%a' /opt/services/vaultwarden/data)" = "700" ] || exit 1
           PROC_USER=$(docker top vaultwarden 2>/dev/null | tail -n +2 | awk '{print $1}' | head -n1)
@@ -43,41 +59,63 @@
       register: vw05_backend
       failed_when: vw05_backend.status != 200
 
-    - name: "VW-06: Assert Caddy reverse proxy HTTPS routing returns HTTP 200"
+    - name: "Assert Tailscale Funnel status shows active background routing to 8088"
+      ansible.builtin.command:
+        cmd: tailscale funnel status --json
+      register: verify_funnel_status_cmd
+      changed_when: false
+      failed_when:
+        - (verify_funnel_status_cmd.stdout | from_json).AllowFunnel is not defined
+        - not (verify_funnel_status_cmd.stdout is search('127.0.0.1:8088'))
+
+    - name: "VW-06: Assert Tailscale Funnel public HTTPS ingress returns HTTP 200"
       ansible.builtin.uri:
-        url: https://127.0.0.1/alive
-        headers:
-          Host: vaultwarden.lan
-        validate_certs: false
+        url: "https://{{ tailscale_discovered_fqdn }}/alive"
         status_code: 200
+        validate_certs: true
       register: vw06_ingress
       failed_when: vw06_ingress.status != 200
 
-    - name: "VW-07: Assert WebSocket upgrade handshake on /notifications/hub"
+    - name: "VW-07: Assert WebSocket upgrade handshake on /notifications/hub via Tailscale Funnel"
+      # noqa: command-instead-of-module risky-shell-pipe
       ansible.builtin.shell:
         cmd: |
-          curl --http1.1 -k -i -N \
+          set -o pipefail
+          curl --http1.1 -i -N \
             -H "Connection: Upgrade" \
             -H "Upgrade: websocket" \
-            -H "Host: vaultwarden.lan" \
             -H "Sec-WebSocket-Key: SGVsbG8sIHdvcmxkIQ==" \
             -H "Sec-WebSocket-Version: 13" \
-            --max-time 3 \
-            https://127.0.0.1/notifications/hub 2>&1 | grep -qiE "(101 Switching Protocols|Upgrade: websocket|Invalid claim|401 Unauthorized)"
+            --max-time 5 \
+            "https://{{ tailscale_discovered_fqdn }}/notifications/hub" 2>&1 | \
+            grep -qiE "(101 Switching Protocols|Upgrade: websocket|Invalid claim|401 Unauthorized)"
       changed_when: false
+
+    - name: "Assert Vaultwarden /api/config verifies signups are disabled and domain matches"
+      ansible.builtin.uri:
+        url: "https://{{ tailscale_discovered_fqdn }}/api/config"
+        status_code: 200
+        validate_certs: true
+        return_content: true
+      register: vw_api_config
+      failed_when:
+        - vw_api_config.status != 200
+        - >-
+          (vw_api_config.json.settings.disableUserRegistration is defined and not (vw_api_config.json.settings.disableUserRegistration | bool)) or
+          (vw_api_config.json.signupsAllowed is defined and (vw_api_config.json.signupsAllowed | bool))
+        - >-
+          (vw_api_config.json.environment.vault | default(vw_api_config.json.domain | default(''))) != ('https://' ~ tailscale_discovered_fqdn)
 
     - name: "VW-08: Assert transactional backup execution and integrity"
       ansible.builtin.command:
         cmd: /opt/services/vaultwarden/scripts/backup.sh --force
       changed_when: false
 
-    - name: "VW-09: Assert Vaultwarden backup timer is enabled and active"
-      ansible.builtin.systemd:
-        name: vaultwarden-backup.timer
-        state: started
-      check_mode: true
-      register: vw09_timer
-      failed_when: vw09_timer.status.ActiveState != "active"
+    - name: "VW-09: Assert Vaultwarden backup integration hook is present and executable"
+      ansible.builtin.stat:
+        path: /etc/homelab/backup.d/10-vaultwarden.sh
+      register: vw09_hook
+      failed_when: (not vw09_hook.stat.exists) or (not vw09_hook.stat.executable)
 
     - name: Display Phase 5 verification summary
       ansible.builtin.debug:
@@ -88,7 +126,8 @@
           - "VW-03 Least Privilege: PASS"
           - "VW-04 Secret Isolation: PASS"
           - "VW-05 Local Backend: PASS"
-          - "VW-06 Ingress HTTPS: PASS"
-          - "VW-07 WebSocket Upgrade: PASS"
+          - "VW-06 Funnel Public HTTPS (/alive): PASS"
+          - "VW-07 WebSocket Upgrade (/notifications/hub): PASS"
           - "VW-08 Transactional Backup: PASS"
-          - "VW-09 Backup Timer: PASS"
+          - "VW-09 Backup Integration Hook: PASS"
+          - "Funnel Routing & /api/config (signups=false): PASS"

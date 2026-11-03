@@ -19,6 +19,13 @@
     - vaultwarden
     - vaultwarden_service
 
+- name: Include Funnel tasks
+  ansible.builtin.include_tasks: funnel.yml
+  when: vaultwarden_enable_funnel | default(true)
+  tags:
+    - vaultwarden
+    - vaultwarden_funnel
+
 - name: Include backup tasks
   ansible.builtin.include_tasks: backup.yml
   tags:

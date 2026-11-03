@@ -12,6 +12,7 @@
   register: vaultwarden_unit_file
 
 - name: Force systemd daemon reload if unit file changed
+  # noqa: no-handler
   ansible.builtin.systemd:
     daemon_reload: true
   when: vaultwarden_unit_file.changed

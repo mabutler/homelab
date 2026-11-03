@@ -1,0 +1,54 @@
+---
+# Declarative Tailscale Funnel management for Vaultwarden
+
+- name: Query current Tailscale Funnel status
+  ansible.builtin.command:
+    cmd: tailscale funnel status --json
+  register: tailscale_funnel_status_cmd
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Parse Tailscale Funnel status JSON
+  ansible.builtin.set_fact:
+    tailscale_funnel_json: "{{ (tailscale_funnel_status_cmd.stdout | trim) | default('{}', true) | from_json }}"
+
+- name: Evaluate Tailscale Funnel active state for Vaultwarden
+  ansible.builtin.set_fact:
+    vaultwarden_funnel_is_active: >-
+      {{
+        (tailscale_funnel_json.AllowFunnel is defined) and
+        (tailscale_funnel_json.AllowFunnel | select('search', ':' ~ (vaultwarden_funnel_port | default(443) | string) ~ '$') | list | length > 0) and
+        (tailscale_funnel_json.Web is defined) and
+        (tailscale_funnel_status_cmd.stdout is search(':' ~ (vaultwarden_internal_port | default(8088) | string)))
+      }}
+
+- name: Enable Tailscale Funnel for Vaultwarden
+  ansible.builtin.command:
+    cmd: "timeout 20 tailscale funnel --bg --yes {{ vaultwarden_internal_port | default(8088) }}"
+  changed_when: true
+  register: tailscale_funnel_enable_cmd
+  failed_when:
+    - tailscale_funnel_enable_cmd.rc != 0
+  when: not (vaultwarden_funnel_is_active | bool)
+
+- name: Verify Tailscale Funnel status after activation
+  ansible.builtin.command:
+    cmd: tailscale funnel status --json
+  register: tailscale_funnel_verification_cmd
+  changed_when: false
+  when:
+    - not (vaultwarden_funnel_is_active | bool)
+    - not ansible_check_mode
+
+- name: Assert Tailscale Funnel is active on port {{ vaultwarden_funnel_port | default(443) }}
+  ansible.builtin.assert:
+    that:
+      - (tailscale_funnel_verification_cmd.stdout | from_json).AllowFunnel is defined
+      - >-
+        ((tailscale_funnel_verification_cmd.stdout | from_json).AllowFunnel |
+        select('search', ':' ~ (vaultwarden_funnel_port | default(443) | string) ~ '$') | list | length > 0)
+    fail_msg: "Tailscale Funnel failed to activate on port {{ vaultwarden_funnel_port | default(443) }}"
+  when:
+    - not (vaultwarden_funnel_is_active | bool)
+    - not ansible_check_mode

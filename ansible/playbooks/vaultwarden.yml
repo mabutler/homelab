@@ -31,12 +31,12 @@
         - docker
         - containers
 
-    - role: vaultwarden
-      tags:
-        - vaultwarden
-        - app
-
     - role: caddy
       tags:
         - caddy
         - ingress
+
+    - role: vaultwarden
+      tags:
+        - vaultwarden
+        - app

@@ -1,6 +1,61 @@
 ---
 # Configuration tasks for vaultwarden
 
+- name: Pre-flight check - assert signups are disabled for public Funnel exposure
+  ansible.builtin.assert:
+    that:
+      - not (vaultwarden_signups_allowed | bool)
+    fail_msg: "Pre-flight assertion failed: vaultwarden_signups_allowed MUST be false when exposed publicly."
+
+- name: Query Tailscale status for dynamic FQDN discovery
+  ansible.builtin.command:
+    cmd: tailscale status --json
+  register: tailscale_status_raw
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  when: vaultwarden_domain | default('') == ''
+
+- name: Parse Tailscale status JSON
+  ansible.builtin.set_fact:
+    tailscale_status: "{{ (tailscale_status_raw.stdout | trim) | default('{}', true) | from_json }}"
+  when:
+    - vaultwarden_domain | default('') == ''
+    - tailscale_status_raw is defined
+    - tailscale_status_raw.stdout is defined
+    - tailscale_status_raw.stdout | trim != ''
+
+- name: Determine dynamic Vaultwarden FQDN
+  ansible.builtin.set_fact:
+    vaultwarden_dynamic_fqdn: >-
+      {{
+        (tailscale_status.CertDomains | default([]) | first) |
+        default(((tailscale_status.Self.DNSName | default('')).rstrip('.')), true)
+      }}
+  when:
+    - vaultwarden_domain | default('') == ''
+    - tailscale_status is defined
+
+- name: Set canonical vaultwarden_domain fact
+  ansible.builtin.set_fact:
+    vaultwarden_domain: >-
+      {{
+        vaultwarden_domain
+        if (vaultwarden_domain | default('') != '')
+        else (
+          ('https://' ~ vaultwarden_dynamic_fqdn)
+          if (vaultwarden_dynamic_fqdn | default('') != '')
+          else vaultwarden_domain_default
+        )
+      }}
+
+- name: Ensure vaultwarden_domain format (starts with https://, no trailing slash)
+  ansible.builtin.set_fact:
+    vaultwarden_domain: >-
+      {{
+        (vaultwarden_domain if vaultwarden_domain.startswith('https://') else ('https://' ~ vaultwarden_domain)).rstrip('/')
+      }}
+
 - name: Deploy Vaultwarden environment configuration file (.env)
   ansible.builtin.template:
     src: env.j2
