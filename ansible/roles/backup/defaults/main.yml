@@ -18,8 +18,8 @@ backup_include_paths:
   - "/opt/services"
 
 backup_exclude_patterns:
-  - "*.sqlite3"
-  - "*.db"
+  - "/opt/services/*/data/*.sqlite3"
+  - "/opt/services/*/data/*.db"
   - "*.sqlite3-wal"
   - "*.sqlite3-shm"
   - "*.sock"
