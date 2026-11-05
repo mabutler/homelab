@@ -1,0 +1,41 @@
+# Docker Compose manifest for Frigate NVR
+# Managed by Ansible - do not edit manually
+
+services:
+  frigate:
+    image: {{ frigate_image_tag }}
+    container_name: frigate
+    restart: unless-stopped
+    stop_grace_period: 30s
+    shm_size: "{{ frigate_shm_size }}"
+    devices:
+      - source: {{ frigate_igpu_render_device }}
+        target: /dev/dri/renderD128
+        permissions: rwm
+      - source: {{ frigate_igpu_card_device }}
+        target: /dev/dri/card0
+        permissions: rwm
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - {{ frigate_config_dir }}:/config
+      - {{ frigate_media_dir }}:/media/frigate
+      - type: tmpfs
+        target: /tmp/cache
+        tmpfs:
+          size: {{ frigate_tmpfs_cache_bytes }}
+    env_file:
+      - .env
+    environment:
+      - LIBVA_DRIVER_NAME=iHD
+    ports:
+      - "{{ frigate_http_port }}:5000"
+      - "{{ frigate_auth_port }}:8971"
+      - "{{ frigate_rtsp_port }}:8554"
+      - "{{ frigate_webrtc_port }}:8555/tcp"
+      - "{{ frigate_webrtc_port }}:8555/udp"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:5000/api/version >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s

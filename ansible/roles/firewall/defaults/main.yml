@@ -15,3 +15,12 @@ firewall_allowed_udp_ports:
 firewall_allowed_interfaces:
   - "lo"
   - "tailscale0"
+
+# Frigate NVR LAN-accessible ports
+firewall_frigate_tcp_ports:
+  - 5000
+  - 8971
+  - 8554
+  - 8555
+firewall_frigate_udp_ports:
+  - 8555

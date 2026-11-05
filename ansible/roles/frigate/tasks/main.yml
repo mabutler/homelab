@@ -1,0 +1,26 @@
+---
+# Main task orchestrator for Frigate NVR role
+
+- name: Include preflight assertions
+  ansible.builtin.include_tasks: preflight.yml
+  tags:
+    - frigate
+    - frigate_preflight
+
+- name: Include layout tasks
+  ansible.builtin.include_tasks: layout.yml
+  tags:
+    - frigate
+    - frigate_layout
+
+- name: Include config tasks
+  ansible.builtin.include_tasks: config.yml
+  tags:
+    - frigate
+    - frigate_config
+
+- name: Include service tasks
+  ansible.builtin.include_tasks: service.yml
+  tags:
+    - frigate
+    - frigate_service

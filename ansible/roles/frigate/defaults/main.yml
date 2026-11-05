@@ -1,0 +1,38 @@
+---
+# Defaults for frigate role
+
+# Container image
+frigate_image_tag: "ghcr.io/blakeblackshear/frigate:0.14.1"
+
+# Directory layout
+frigate_app_dir: "/opt/services/frigate"
+frigate_config_dir: "/opt/services/frigate/config"
+frigate_backups_dir: "/opt/services/frigate/backups"
+frigate_scratch_root: "/mnt/scratch/frigate"
+frigate_media_dir: "/mnt/scratch/frigate/media"
+
+# Hardware acceleration & devices (Intel UHD Graphics 770)
+frigate_igpu_render_device: "/dev/dri/by-path/pci-0000:00:02.0-render"
+frigate_igpu_card_device: "/dev/dri/by-path/pci-0000:00:02.0-card"
+
+# Memory sizing
+frigate_shm_size: "256mb"
+frigate_tmpfs_cache_size: "512m"
+frigate_tmpfs_cache_bytes: 536870912
+
+# Network ports
+frigate_http_port: 5000
+frigate_auth_port: 8971
+frigate_rtsp_port: 8554
+frigate_webrtc_port: 8555
+
+# Retention policies
+frigate_record_retain_days: 7
+frigate_record_retain_mode: "motion"
+frigate_events_retain_days: 14
+frigate_events_retain_mode: "active_objects"
+frigate_snapshots_retain_days: 14
+
+# Camera activation flags (pre-arrival defaults to false)
+frigate_camera_1_enabled: false
+frigate_camera_2_enabled: false

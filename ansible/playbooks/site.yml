@@ -110,6 +110,11 @@
         - vaultwarden
         - app
 
+    - role: frigate
+      tags:
+        - frigate
+        - app
+
     - role: backup
       tags:
         - backup

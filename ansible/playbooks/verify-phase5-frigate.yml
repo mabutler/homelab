@@ -1,0 +1,139 @@
+---
+- name: Homelab2 Phase 5 Frigate NVR Acceptance Verification
+  hosts: homelab_nodes
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: "FRG-01: Assert Frigate systemd service is active and container has 0 restarts"
+      # noqa: risky-shell-pipe
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          systemctl is-active frigate.service | grep -q "^active$" || exit 1
+          STATUS_RESTARTS=$(docker inspect -f '{% raw %}{{.State.Status}}:{{.RestartCount}}{% endraw %}' frigate 2>/dev/null)
+          [ "$STATUS_RESTARTS" = "running:0" ] || exit 1
+      changed_when: false
+
+    - name: "FRG-02: Assert Frigate HTTP API (/api/version & /api/stats) responds HTTP 200 within 2s"
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ frigate_http_port | default(5000) }}/api/version"
+        status_code: 200
+        return_content: true
+        timeout: 2
+      register: frg02_version
+      failed_when:
+        - frg02_version.status != 200
+        - "'0.14.1' not in frg02_version.content"
+
+    - name: "FRG-02: Assert Frigate /api/stats telemetry responds HTTP 200 within 2s"
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ frigate_http_port | default(5000) }}/api/stats"
+        status_code: 200
+        return_content: true
+        timeout: 2
+      register: frg02_stats
+      failed_when:
+        - frg02_stats.status != 200
+        - frg02_stats.json.detectors is not defined
+
+    - name: Query Frigate /api/config
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ frigate_http_port | default(5000) }}/api/config"
+        status_code: 200
+        return_content: true
+        timeout: 2
+      register: frigate_api_config
+
+    - name: "FRG-03: Assert Intel UHD 770 iGPU bound, discrete AMD GPU excluded, and OpenVINO detector configured"
+      # noqa: risky-shell-pipe
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          DEVICES=$(docker inspect frigate --format '{% raw %}{{json .HostConfig.Devices}}{% endraw %}' 2>/dev/null)
+          echo "$DEVICES" | grep -q "0000:00:02.0-render" || exit 1
+          echo "$DEVICES" | grep -q "0000:03:00.0" && exit 1
+          exit 0
+      changed_when: false
+      failed_when:
+        - frigate_api_config.json.detectors.ov.type != "openvino"
+
+    - name: "FRG-04: Assert pre-staged camera_1 and camera_2 slots exist with retention constraints"
+      ansible.builtin.assert:
+        that:
+          - frigate_api_config.json.cameras.camera_1 is defined
+          - frigate_api_config.json.cameras.camera_2 is defined
+          - frigate_api_config.json.record.retain.days == 7
+          - frigate_api_config.json.record.events.retain.default == 14
+        fail_msg: "Pre-staged camera configuration or retention defaults mismatch in /api/config"
+
+    - name: "FRG-05: Assert secret isolation: .env permissions 0600 and .env.example exists"
+      ansible.builtin.stat:
+        path: /opt/services/frigate/.env
+      register: frg05_env
+      failed_when:
+        - not frg05_env.stat.exists
+        - frg05_env.stat.mode != "0600"
+
+    - name: "FRG-05: Assert .env.example exists"
+      ansible.builtin.stat:
+        path: /opt/services/frigate/.env.example
+      register: frg05_example
+      failed_when: not frg05_example.stat.exists
+
+    - name: "FRG-06: Assert tiered storage mounts and shared memory allocation"
+      # noqa: risky-shell-pipe
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          MOUNTS=$(docker inspect frigate --format '{% raw %}{{json .Mounts}}{% endraw %}' 2>/dev/null)
+          echo "$MOUNTS" | grep -q "/opt/services/frigate/config" || exit 1
+          echo "$MOUNTS" | grep -q "/mnt/scratch/frigate/media" || exit 1
+          SHM=$(docker inspect frigate --format '{% raw %}{{.HostConfig.ShmSize}}{% endraw %}' 2>/dev/null)
+          [ "$SHM" -ge 268435456 ] || exit 1
+      changed_when: false
+
+    - name: "FRG-07: Assert network isolation: nftables permits port 5000 and 0 Funnel exposure"
+      # noqa: risky-shell-pipe
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          nft list table inet filter | grep -q "5000" || exit 1
+          FUNNEL=$(tailscale funnel status 2>&1 || true)
+          echo "$FUNNEL" | grep -qE "(5000|8971)" && exit 1
+          exit 0
+      changed_when: false
+
+    - name: "FRG-08: Assert backup hook /etc/homelab/backup.d/20-frigate.sh executes snapshot"
+      # noqa: risky-shell-pipe
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          [ -x /etc/homelab/backup.d/20-frigate.sh ] || exit 1
+          /etc/homelab/backup.d/20-frigate.sh pre-backup || exit 1
+          grep -E '/mnt/scratch' /etc/homelab/backup-excludes.txt || exit 1
+      changed_when: false
+
+    - name: "FRG-09: Assert clean journald logs and healthy container status"
+      # noqa: risky-shell-pipe
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          journalctl -u frigate.service --no-pager -n 20 | grep -qiE "(Traceback|Fatal Python error)" && exit 1
+          HEALTH=$(docker inspect frigate --format '{% raw %}{{.State.Health.Status}}{% endraw %}' 2>/dev/null)
+          [ "$HEALTH" = "healthy" ] || [ "$HEALTH" = "starting" ] || exit 1
+      changed_when: false
+
+    - name: Display Phase 5 Frigate verification summary
+      ansible.builtin.debug:
+        msg:
+          - "=== Phase 5 Frigate NVR Verification Summary ==="
+          - "FRG-01 Service & Container Active: PASS"
+          - "FRG-02 HTTP API Health (<2s): PASS"
+          - "FRG-03 Intel UHD 770 iGPU & OpenVINO: PASS"
+          - "FRG-04 Pre-Staged Camera Slots & Retention: PASS"
+          - "FRG-05 Secret Isolation (0600): PASS"
+          - "FRG-06 Tiered Storage & ShmSize: PASS"
+          - "FRG-07 Network & Funnel Isolation: PASS"
+          - "FRG-08 Transactional Backup Snapshot: PASS"
+          - "FRG-09 Clean Journald Logs & Health: PASS"

@@ -16,3 +16,11 @@
     owner: root
     group: root
     mode: "0750"
+
+- name: Deploy Frigate backup integration hook
+  ansible.builtin.template:
+    src: 20-frigate.sh.j2
+    dest: "{{ backup_hook_dir }}/20-frigate.sh"
+    owner: root
+    group: root
+    mode: "0750"

@@ -75,6 +75,22 @@ flowchart LR
 
 ---
 
+## Declarative Architecture & System Inventory Map
+
+To eliminate configuration ambiguity and ensure operators and autonomous agents locate resources rapidly with zero discovery toil, the codebase establishes single sources of truth across explicit inventory domains:
+
+| Inventory Domain | Primary Location & Source of Truth | Key Managed Resources & Defaults | Convergence / Deployment |
+|---|---|---|---|
+| **Base Software Inventory** | [`ansible/inventory/group_vars/all/vars.yml`](file:///C:/Users/micro/projects/homelab2/ansible/inventory/group_vars/all/vars.yml) (`common_packages`) | Core administration CLI tools (`vim`, `tmux`, `htop`, `git`, `curl`, `jq`, `uv`). | `ansible-playbook -i inventory/hosts.yml playbooks/site.yml --tags packages` |
+| **Host & Network Inventory** | [`ansible/inventory/hosts.yml`](file:///C:/Users/micro/projects/homelab2/ansible/inventory/hosts.yml) | Target host IP (`192.168.4.57`), admin user, Python interpreter, host groups. | `ansible-playbook -i inventory/hosts.yml playbooks/site.yml` |
+| **Storage & Drive Topology** | [`ansible/inventory/host_vars/homelab2/storage.yml`](file:///C:/Users/micro/projects/homelab2/ansible/inventory/host_vars/homelab2/storage.yml) | Drive UUIDs, filesystems (`ext4`), mount paths (`/mnt/disks/data*`, `/mnt/scratch`), pool roles (`data`, `parity`, `scratch`). | `ansible-playbook -i inventory/hosts.yml playbooks/storage.yml` |
+| **Secrets & Credential Inventory** | [`ansible/inventory/group_vars/all/vault.yml`](file:///C:/Users/micro/projects/homelab2/ansible/inventory/group_vars/all/vault.yml) | Encrypted SOPS/Age credentials (Tailscale auth key, Vaultwarden token, Backblaze B2 keys, Restic password). | Gitignored; decrypted into memory during execution. |
+| **Platform Safeguards & Policies** | [`ansible/inventory/group_vars/all/vars.yml`](file:///C:/Users/micro/projects/homelab2/ansible/inventory/group_vars/all/vars.yml) | SSH hardening, Fail2ban jails, `systemd-oomd` memory limits, journald bounds, Chrony NTP pools. | `ansible-playbook -i inventory/hosts.yml playbooks/harden.yml` |
+| **Application Platform & Stacks** | `/opt/services/<app>/docker-compose.yml` & [`ansible/roles/<app>`](file:///C:/Users/micro/projects/homelab2/ansible/roles/) | Container Compose stacks, loopback port bindings, persistent NVMe storage paths. | `ansible-playbook -i inventory/hosts.yml playbooks/<app>.yml` |
+| **Backup Hook Inventory** | `/etc/homelab/backup.d/*.sh` & [`ansible/roles/backup`](file:///C:/Users/micro/projects/homelab2/ansible/roles/backup/) | Transactional database dump scripts, backup inclusion paths, and snapshot retention schedules. | `ansible-playbook -i inventory/hosts.yml playbooks/backup.yml` |
+
+---
+
 ## Key References
 
 - [Constitution](file:///C:/Users/micro/projects/homelab2/.specify/memory/constitution.md) - Ratified principles and operational standards (v1.1.0).

@@ -1,0 +1,67 @@
+---
+- name: Homelab2 Phase 5 Frigate NVR Application Deployment
+  hosts: homelab_nodes
+  become: true
+  gather_facts: true
+
+  pre_tasks:
+    - name: Verify vault.yml exists on controller
+      ansible.builtin.stat:
+        path: "{{ inventory_dir }}/group_vars/all/vault.yml"
+      register: vault_stat
+      delegate_to: localhost
+      run_once: true
+      tags:
+        - always
+
+    - name: Abort if vault.yml is missing
+      ansible.builtin.fail:
+        msg: >
+          CRITICAL ERROR: '{{ inventory_dir }}/group_vars/all/vault.yml' not found.
+          Copy 'vault.yml.example' to 'vault.yml' and configure required secrets before running.
+      when: not vault_stat.stat.exists
+      delegate_to: localhost
+      run_once: true
+      tags:
+        - always
+
+  roles:
+    - role: docker
+      tags:
+        - docker
+        - containers
+
+    - role: firewall
+      tags:
+        - firewall
+        - network
+
+    - role: frigate
+      tags:
+        - frigate
+        - app
+
+  post_tasks:
+    - name: Verify Frigate systemd service is active
+      ansible.builtin.systemd:
+        name: frigate
+        state: started
+      register: frigate_svc_status
+      failed_when: frigate_svc_status.status.ActiveState != "active"
+
+    - name: Wait for Frigate API /api/version to return HTTP 200
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ frigate_http_port | default(5000) }}/api/version"
+        status_code: 200
+        return_content: true
+      register: frigate_api_version
+      until: frigate_api_version.status == 200
+      retries: 24
+      delay: 5
+
+    - name: Assert Frigate version matches expected release
+      ansible.builtin.assert:
+        that:
+          - "'0.14.1' in frigate_api_version.content"
+        fail_msg: "Frigate API returned unexpected version: {{ frigate_api_version.content }}"
+        success_msg: "Frigate NVR 0.14.1 deployed and serving healthy API on port {{ frigate_http_port | default(5000) }}."

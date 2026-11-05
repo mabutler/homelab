@@ -31,3 +31,10 @@ vault_b2_account_key: "K00xxxxxxxxxxxxxxxxxxxx"
 vault_restic_repository: "b2:your-b2-bucket-name:homelab2"
 # Strong passphrase used by Restic to encrypt backups client-side
 vault_restic_password: "replace-with-a-very-strong-restic-encryption-password"
+
+# Frigate NVR Camera RTSP Credentials & Stream Endpoints (Phase 5)
+vault_frigate_camera_1_rtsp_main_url: "rtsp://admin:CHANGE_ME_PASSWORD@192.168.4.201:554/h264Preview_01_main"
+vault_frigate_camera_1_rtsp_sub_url: "rtsp://admin:CHANGE_ME_PASSWORD@192.168.4.201:554/h264Preview_01_sub"
+vault_frigate_camera_2_rtsp_main_url: "rtsp://admin:CHANGE_ME_PASSWORD@192.168.4.202:554/h264Preview_01_main"
+vault_frigate_camera_2_rtsp_sub_url: "rtsp://admin:CHANGE_ME_PASSWORD@192.168.4.202:554/h264Preview_01_sub"
+

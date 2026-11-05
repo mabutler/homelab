@@ -9,6 +9,7 @@ common_packages:
   - git
   - curl
   - jq
+  - uv
 
 # Administrative Operator
 admin_username: "admin"
@@ -90,5 +91,16 @@ vaultwarden_websocket_enabled: true
 vaultwarden_enable_db_wal: true
 vaultwarden_retention_days: 30
 
-
+# Frigate NVR Application (Phase 5)
+frigate_http_port: 5000
+frigate_auth_port: 8971
+frigate_rtsp_port: 8554
+frigate_webrtc_port: 8555
+frigate_record_retain_days: 7
+frigate_record_retain_mode: "motion"
+frigate_events_retain_days: 14
+frigate_events_retain_mode: "active_objects"
+frigate_snapshots_retain_days: 14
+frigate_camera_1_enabled: false
+frigate_camera_2_enabled: false
 

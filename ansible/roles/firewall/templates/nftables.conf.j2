@@ -36,6 +36,18 @@ table {{ firewall_address_family | default('inet') }} {{ firewall_table_name | d
 
         # 8. Allow Web Ingress (HTTP 80 and HTTPS 443)
         tcp dport { 80, 443 } accept
+
+        # 9. Allow Frigate NVR access from trusted management subnets
+{% if firewall_frigate_tcp_ports | default([]) | length > 0 %}
+{% for subnet in firewall_allowed_subnets %}
+        ip saddr {{ subnet }} tcp dport { {{ firewall_frigate_tcp_ports | join(', ') }} } accept
+{% endfor %}
+{% endif %}
+{% if firewall_frigate_udp_ports | default([]) | length > 0 %}
+{% for subnet in firewall_allowed_subnets %}
+        ip saddr {{ subnet }} udp dport { {{ firewall_frigate_udp_ports | join(', ') }} } accept
+{% endfor %}
+{% endif %}
     }
 
     chain forward {

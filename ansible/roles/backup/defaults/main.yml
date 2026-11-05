@@ -20,12 +20,19 @@ backup_include_paths:
 backup_exclude_patterns:
   - "/opt/services/*/data/*.sqlite3"
   - "/opt/services/*/data/*.db"
+  - "/opt/services/*/config/*.db"
   - "*.sqlite3-wal"
   - "*.sqlite3-shm"
+  - "*.db-wal"
+  - "*.db-shm"
   - "*.sock"
   - "*.log"
   - "*.tmp"
   - "/opt/services/*/backups/vaultwarden-backup-*.tar.gz"
+  - "/opt/services/frigate/config/model_cache"
+  - "/mnt/scratch"
+  - "/mnt/scratch/**"
+
 
 # Retention policy
 backup_keep_daily: 7

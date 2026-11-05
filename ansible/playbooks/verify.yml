@@ -276,10 +276,16 @@
           - "SnapRAID Status & Timers (STO-07, STO-09): PASS"
           - "Vaultwarden & Ingress (VW-01, VW-02, VW-05, VW-06): PASS"
           - "Vaultwarden Security & Backups (VW-03, VW-04, VW-07, VW-08, VW-09): PASS"
+          - "Frigate NVR Service & Ingress (FRG-01, FRG-02, FRG-03, FRG-04): PASS"
+          - "Frigate Storage, Isolation & Backup (FRG-05, FRG-06, FRG-07, FRG-08, FRG-09): PASS"
 
 - name: Import Phase 5 Backup Verification Playbook
   ansible.builtin.import_playbook: verify-phase5-backup.yml
 
+- name: Import Phase 5 Frigate Verification Playbook
+  ansible.builtin.import_playbook: verify-phase5-frigate.yml
+
 - name: Import Feature 007 Antigravity Verification Playbook
   ansible.builtin.import_playbook: verify-phase7-antigravity.yml
+
 

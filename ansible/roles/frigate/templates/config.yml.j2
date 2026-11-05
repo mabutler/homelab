@@ -1,0 +1,69 @@
+# Frigate NVR Service Configuration
+# Managed by Ansible - do not edit manually
+
+mqtt:
+  enabled: false
+
+detectors:
+  ov:
+    type: openvino
+    device: GPU
+
+model:
+  width: 300
+  height: 300
+  input_tensor: nhwc
+  input_pixel_format: bgr
+  path: /openvino-model/ssdlite_mobilenet_v2.xml
+  labelmap_path: /openvino-model/coco_91cl_bkgr.txt
+
+ffmpeg:
+  hwaccel_args: preset-vaapi
+
+detect:
+  enabled: true
+  width: 1280
+  height: 720
+  fps: 5
+
+objects:
+  track:
+    - person
+    - car
+
+record:
+  enabled: true
+  retain:
+    days: {{ frigate_record_retain_days }}
+    mode: {{ frigate_record_retain_mode }}
+  events:
+    retain:
+      default: {{ frigate_events_retain_days }}
+      mode: {{ frigate_events_retain_mode }}
+
+snapshots:
+  enabled: true
+  retain:
+    default: {{ frigate_snapshots_retain_days }}
+
+cameras:
+  camera_1:
+    enabled: {{ frigate_camera_1_enabled | lower }}
+    ffmpeg:
+      inputs:
+        - path: "{FRIGATE_CAMERA_1_RTSP_SUB_URL}"
+          roles:
+            - detect
+        - path: "{FRIGATE_CAMERA_1_RTSP_MAIN_URL}"
+          roles:
+            - record
+  camera_2:
+    enabled: {{ frigate_camera_2_enabled | lower }}
+    ffmpeg:
+      inputs:
+        - path: "{FRIGATE_CAMERA_2_RTSP_SUB_URL}"
+          roles:
+            - detect
+        - path: "{FRIGATE_CAMERA_2_RTSP_MAIN_URL}"
+          roles:
+            - record
