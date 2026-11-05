@@ -24,7 +24,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 if (-not $Json) {
-    Write-Host "=== homelab2 Phase 5 Vaultwarden Verification Orchestrator (PowerShell) ===" -ForegroundColor Cyan
+    Write-Host "=== fidelacchius Phase 5 Vaultwarden Verification Orchestrator (PowerShell) ===" -ForegroundColor Cyan
     Write-Host "Target Host : $User@$TargetHost"
 }
 

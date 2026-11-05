@@ -15,7 +15,7 @@ vaultwarden_user_uid: 1000
 vaultwarden_user_gid: 1000
 
 vaultwarden_domain: ""
-vaultwarden_domain_default: "https://<node-name>.<tailnet>.ts.net"
+vaultwarden_domain_default: "https://fidelacchius.fable-mackarel.ts.net"
 vaultwarden_enable_funnel: true
 vaultwarden_funnel_port: 443
 vaultwarden_signups_allowed: false

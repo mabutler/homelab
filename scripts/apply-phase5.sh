@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/apply-phase5.sh
-# POSIX operator convergence runner for homelab2 Phase 5 (Vaultwarden Application Deployment)
+# POSIX operator convergence runner for fidelacchius Phase 5 (Vaultwarden Application Deployment)
 # Orchestrates execution of Ansible playbooks against the production host.
 
 set -euo pipefail
@@ -91,7 +91,7 @@ if [[ -n "$IDENTITY_FILE" ]]; then
     SSH_OPTS+=(-i "$IDENTITY_FILE")
 fi
 
-echo "=== homelab2 Phase 5 Vaultwarden Convergence Orchestrator (POSIX) ==="
+echo "=== fidelacchius Phase 5 Vaultwarden Convergence Orchestrator (POSIX) ==="
 echo "Target Host : ${SSH_USER}@${TARGET_HOST}"
 echo "Playbook    : ${PLAYBOOK}"
 if [[ "$CHECK_MODE" == "true" ]]; then echo "Mode        : Check Mode (Dry Run)"; fi

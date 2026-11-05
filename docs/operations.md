@@ -1,6 +1,6 @@
 # Operational Runbook: Target Host Antigravity & Remote Control
 
-This runbook documents day-to-day operations, lifecycle management, troubleshooting, and disaster recovery procedures for the Google Antigravity Remote Control daemon on `homelab2` (`admin@192.168.4.57`).
+This runbook documents day-to-day operations, lifecycle management, troubleshooting, and disaster recovery procedures for the Google Antigravity Remote Control daemon on `fidelacchius` (`admin@192.168.4.57`).
 
 ---
 
@@ -119,3 +119,15 @@ Ephemeral caches, model files, crash telemetry, and Git databases are excluded t
    ./scripts/apply-phase7-antigravity.sh --confirm-target-ready
    ```
 3. The daemon starts immediately with existing credentials without requiring interactive browser OAuth.
+
+### 5.3 Legacy Test Bucket & Application Key Retirement
+Following verified cutover to the official Backblaze B2 bucket `fidelacchius-backups` (`b2:fidelacchius-backups:fidelacchius`):
+1. Log into the Backblaze B2 web console (`https://secure.backblaze.com/b2_buckets.htm`).
+2. Navigate to **Application Keys**:
+   - Locate the legacy key previously named `homelab` (`keyID: 0058d446d9d51d00000000002`).
+   - Click **Delete Key** and confirm deletion.
+3. Navigate to **Buckets**:
+   - Locate the legacy test bucket `homelab2-fidelachius`.
+   - Confirm all production snapshots are present in `fidelacchius-backups`.
+   - Click **Bucket Settings** -> **Delete Bucket** (or remove residual test files then delete bucket).
+4. All backup operations and scheduled systemd timers now exclusively target `b2:fidelacchius-backups:fidelacchius`.

@@ -97,7 +97,7 @@ run_cmd() {
     fi
 }
 
-echo -e "${BLUE}=== homelab2 Phase 3 Acceptance Verification Suite ===${NC}"
+echo -e "${BLUE}=== fidelacchius Phase 3 Acceptance Verification Suite ===${NC}"
 if [[ "$LOCAL_MODE" == "true" ]]; then
     echo "Execution Target: localhost (local execution)"
 else
@@ -138,16 +138,28 @@ else
     exit 3
 fi
 
-# Assertion 4: NET-04 tailscale status authenticated
-echo -n "Checking NET-04: tailscale mesh status online... "
+# Assertion 4: NET-04 tailscale status authenticated & node identity
+echo -n "Checking NET-04: tailscale mesh status online & node identity fidelacchius... "
 TS_STATUS=$(run_cmd "tailscale status --json" 2>/dev/null || true)
 BACKEND_STATE=$(echo "$TS_STATUS" | jq -r '.BackendState // empty' 2>/dev/null || true)
-if [[ "$BACKEND_STATE" == "Running" || "$BACKEND_STATE" == "Starting" || "$BACKEND_STATE" == "NeedsLogin" ]]; then
-    echo -e "${GREEN}PASS${NC} (state: ${BACKEND_STATE})"
+TS_HOSTNAME=$(echo "$TS_STATUS" | jq -r '.Self.HostName // empty' 2>/dev/null || true)
+TS_DNSNAME=$(echo "$TS_STATUS" | jq -r '.Self.DNSName // empty' 2>/dev/null || true)
+SYS_HOSTNAME=$(run_cmd "hostnamectl --static 2>/dev/null || uname -n" | tr -d '[:space:]')
+
+if [[ "$BACKEND_STATE" == "Running" || "$BACKEND_STATE" == "Starting" ]] && \
+   [[ "$SYS_HOSTNAME" == "fidelacchius" ]] && \
+   [[ "$TS_HOSTNAME" == "fidelacchius" ]] && \
+   [[ "$TS_DNSNAME" == "fidelacchius.fable-mackarel.ts.net." ]]; then
+    echo -e "${GREEN}PASS${NC} (state: ${BACKEND_STATE}, host: ${SYS_HOSTNAME}, node: ${TS_HOSTNAME}, fqdn: ${TS_DNSNAME})"
 else
-    # Allow passing if node is authenticated or backend state is reported
-    if run_cmd "tailscale status" >/dev/null 2>&1; then
-        echo -e "${GREEN}PASS${NC}"
+    if [[ "$SYS_HOSTNAME" != "fidelacchius" ]]; then
+        echo -e "${RED}FAIL${NC}"
+        echo "ERROR: [NET-04] System static hostname is '$SYS_HOSTNAME', expected 'fidelacchius'" >&2
+        exit 4
+    elif [[ "$TS_HOSTNAME" != "fidelacchius" || "$TS_DNSNAME" != "fidelacchius.fable-mackarel.ts.net." ]]; then
+        echo -e "${RED}FAIL${NC}"
+        echo "ERROR: [NET-04] Tailscale node identity is '$TS_HOSTNAME' ($TS_DNSNAME), expected 'fidelacchius' (fidelacchius.fable-mackarel.ts.net.)" >&2
+        exit 4
     else
         echo -e "${RED}FAIL${NC}"
         echo "ERROR: [NET-04] tailscale node is not connected to mesh (state: ${BACKEND_STATE:-unknown})" >&2

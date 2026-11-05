@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    PowerShell acceptance verification runner for homelab2 Phase 4 (Storage Pooling & Data Resiliency Layer).
+    PowerShell acceptance verification runner for fidelacchius Phase 4 (Storage Pooling & Data Resiliency Layer).
 .DESCRIPTION
     Executes the 10-point acceptance assertion suite against the target production host
     via SSH or local execution.
@@ -20,7 +20,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-Write-Host "=== homelab2 Phase 4 Verification Orchestrator (PowerShell) ===" -ForegroundColor Cyan
+Write-Host "=== fidelacchius Phase 4 Verification Orchestrator (PowerShell) ===" -ForegroundColor Cyan
 Write-Host "Target Host : $User@$TargetHost"
 
 $sshOpts = @("-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new", "-o", "ConnectTimeout=30")

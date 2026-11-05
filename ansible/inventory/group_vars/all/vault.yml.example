@@ -1,5 +1,5 @@
 ---
-# Example secrets template for homelab2
+# Example secrets template for fidelacchius
 # Copy this file to 'vault.yml' in the same directory and fill in your real secrets.
 # NEVER commit 'vault.yml' to version control (it is gitignored).
 
@@ -27,8 +27,8 @@ vaultwarden_admin_token_hash: "$argon2id$v=19$m=65536,t=3,p=4$..."
 # From Backblaze B2 Console -> App Keys
 vault_b2_account_id: "00xxxxxxxxxxxxxxx"
 vault_b2_account_key: "K00xxxxxxxxxxxxxxxxxxxx"
-# Restic repository target, e.g. b2:my-homelab-backup-bucket:homelab2
-vault_restic_repository: "b2:your-b2-bucket-name:homelab2"
+# Restic repository target, e.g. b2:fidelacchius-backups:fidelacchius
+vault_restic_repository: "b2:fidelacchius-backups:fidelacchius"
 # Strong passphrase used by Restic to encrypt backups client-side
 vault_restic_password: "replace-with-a-very-strong-restic-encryption-password"
 

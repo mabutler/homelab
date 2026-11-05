@@ -20,7 +20,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-Write-Host "=== homelab2 Phase 3 Verification Orchestrator (PowerShell) ===" -ForegroundColor Cyan
+Write-Host "=== fidelacchius Phase 3 Verification Orchestrator (PowerShell) ===" -ForegroundColor Cyan
 Write-Host "Target Host : $User@$TargetHost"
 
 $sshOpts = @("-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new", "-o", "ConnectTimeout=30")

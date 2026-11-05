@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Cross-platform PowerShell runner for homelab2 Phase 3 (Network & Remote Access Overlay).
+    Cross-platform PowerShell runner for fidelacchius Phase 3 (Network & Remote Access Overlay).
 .DESCRIPTION
     Orchestrates execution of Ansible playbooks against the production host.
     Supports native push if ansible-playbook is installed locally, or automated
@@ -44,7 +44,7 @@ if (-not $AgeKeyFile) {
     }
 }
 
-Write-Host "=== homelab2 Phase 3 Convergence Orchestrator (PowerShell) ===" -ForegroundColor Cyan
+Write-Host "=== fidelacchius Phase 3 Convergence Orchestrator (PowerShell) ===" -ForegroundColor Cyan
 Write-Host "Target Host : $User@$HostAddress"
 Write-Host "Playbook    : $Playbook"
 if ($Check) { Write-Host "Mode        : Check Mode (Dry Run)" -ForegroundColor Yellow }

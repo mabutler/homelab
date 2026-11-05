@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Workstation disaster recovery orchestrator for homelab2.
+    Workstation disaster recovery orchestrator for fidelacchius.
 .DESCRIPTION
     Extracts Backblaze B2 and Restic bootstrap credentials from local inventory
     if not explicitly passed, connects to the target Linux host over SSH, and executes
@@ -16,7 +16,7 @@
 .PARAMETER AccountKey
     Backblaze B2 Application Key.
 .PARAMETER Repository
-    Restic repository URI (e.g. b2:bucket:homelab2).
+    Restic repository URI (e.g. b2:fidelacchius-backups:fidelacchius).
 .PARAMETER Password
     Restic client-side encryption password.
 .PARAMETER Snapshot
@@ -80,7 +80,7 @@ if ($IdentityFile) {
     $scpOpts += @("-i", $IdentityFile)
 }
 
-Write-Host "=== homelab2 Disaster Recovery Orchestrator ===" -ForegroundColor Cyan
+Write-Host "=== fidelacchius Disaster Recovery Orchestrator ===" -ForegroundColor Cyan
 Write-Host "Target Host : $User@$HostAddress"
 Write-Host "Snapshot    : $Snapshot"
 Write-Host "Target Dir  : $TargetDir"

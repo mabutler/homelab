@@ -1,5 +1,5 @@
 ---
-# Global non-sensitive variables and hardware defaults for homelab2
+# Global non-sensitive variables and hardware defaults for fidelacchius
 
 # Base Packages
 common_packages:

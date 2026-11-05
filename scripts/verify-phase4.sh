@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/verify-phase4.sh
-# Acceptance verification runner for homelab2 Phase 4 (Storage Pooling & Data Resiliency Layer)
+# Acceptance verification runner for fidelacchius Phase 4 (Storage Pooling & Data Resiliency Layer)
 # Enforces the 10-point Assertion Matrix from contracts/verification-suite.md:
 # STO-01: Physical disk mounts active in /proc/mounts and /etc/fstab (exit 1)
 # STO-02: MergerFS pool /mnt/storage mounted with fuse.mergerfs (exit 2)
@@ -99,7 +99,7 @@ run_cmd() {
     fi
 }
 
-echo -e "${BLUE}=== homelab2 Phase 4 Acceptance Verification Suite ===${NC}"
+echo -e "${BLUE}=== fidelacchius Phase 4 Acceptance Verification Suite ===${NC}"
 if [[ "$LOCAL_MODE" == "true" ]]; then
     echo "Execution Target: localhost (local execution)"
 else

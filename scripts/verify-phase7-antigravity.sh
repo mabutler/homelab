@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/verify-phase7-antigravity.sh
-# Acceptance verification runner for homelab2 Feature 007 (Target Host Antigravity & Remote Control)
+# Acceptance verification runner for fidelacchius Feature 007 (Target Host Antigravity & Remote Control)
 # Enforces the 8-point Assertion Matrix from contracts/verification-suite-contract.md:
 # AG-001: Antigravity CLI Binary Available (command -v agy && agy --version)
 # AG-002: User Lingering Enabled (/var/lib/systemd/linger/admin exists)
@@ -225,7 +225,7 @@ run_assertion() {
 }
 
 if [[ "$JSON_OUTPUT" == "false" ]]; then
-    echo -e "${BLUE}=== homelab2 Feature 007 Acceptance Verification Suite ===${NC}"
+    echo -e "${BLUE}=== fidelacchius Feature 007 Acceptance Verification Suite ===${NC}"
     if [[ "$LOCAL_MODE" == "true" ]]; then
         echo "Execution Target: localhost (local execution)"
     else
@@ -257,7 +257,7 @@ if [[ "$JSON_OUTPUT" == "true" ]]; then
 {
   "timestamp": "$TIMESTAMP",
   "feature": "007-antigravity-remote-control",
-  "target": "homelab2",
+  "target": "fidelacchius",
   "summary": {
     "total": $TOTAL_ASSERTIONS,
     "passed": $PASSED_COUNT,

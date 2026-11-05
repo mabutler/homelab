@@ -61,8 +61,9 @@ if [ -f /etc/homelab/backup.env ]; then
     set +a
 fi
 
-# BK-003: B2 Cloud Repository Connectivity
-run_assertion "BK-003" "B2 Cloud Repository Connectivity" "restic -r \"\$RESTIC_REPOSITORY\" snapshots --json >/dev/null"
+# BK-003: B2 Cloud Repository Target & Connectivity
+run_assertion "BK-003" "B2 Cloud Repository Target (fidelacchius-backups)" "[[ \"\$RESTIC_REPOSITORY\" =~ ^b2:fidelacchius-backups:fidelacchius\$ ]]"
+run_assertion "BK-003-CONN" "B2 Cloud Repository Connectivity" "restic -r \"\$RESTIC_REPOSITORY\" snapshots --json >/dev/null"
 
 # BK-004: Secret File Included in Snapshot
 run_assertion "BK-004" "Secret File Included in Snapshot" "restic -r \"\$RESTIC_REPOSITORY\" ls latest | grep -E '(^|/)etc/homelab/vault\\.yml' >/dev/null"
@@ -118,7 +119,7 @@ if [[ "$JSON_MODE" == true ]]; then
 {
   "timestamp": "$(date -Iseconds)",
   "feature": "006-backblaze-backup-restore",
-  "target": "homelab2",
+  "target": "fidelacchius",
   "summary": {
     "total": $TOTAL,
     "passed": $PASSED,

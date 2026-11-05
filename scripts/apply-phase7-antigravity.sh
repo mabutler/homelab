@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/apply-phase7-antigravity.sh
-# POSIX operator convergence runner for homelab2 Feature 007 (Target Host Antigravity & Remote Control)
+# POSIX operator convergence runner for fidelacchius Feature 007 (Target Host Antigravity & Remote Control)
 # Orchestrates execution of Ansible playbooks against the production host.
 # Enforces explicit target readiness confirmation guard (FR-011).
 
@@ -117,7 +117,7 @@ if [[ -n "$IDENTITY_FILE" ]]; then
     ANSIBLE_CMD+=(--private-key "$IDENTITY_FILE")
 fi
 
-echo "=== homelab2 Feature 007 Convergence Orchestrator ==="
+echo "=== fidelacchius Feature 007 Convergence Orchestrator ==="
 echo "Target Host : ${SSH_USER}@${TARGET_HOST}"
 echo "Playbook    : ${PLAYBOOK}"
 if [[ "$CHECK_MODE" == "true" ]]; then echo "Mode        : Check Mode (Dry Run)"; fi

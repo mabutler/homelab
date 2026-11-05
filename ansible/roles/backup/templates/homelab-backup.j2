@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# /usr/local/bin/homelab-backup - Centralized Backup Runner for homelab2
-# Managed by Ansible - homelab2
+# /usr/local/bin/homelab-backup - Centralized Backup Runner for fidelacchius
+# Managed by Ansible - fidelacchius
 # Contract: BACKUP-RUNNER-V1
 set -euo pipefail
 
@@ -149,7 +149,7 @@ do_backup() {
         backup_cmd+=("--exclude-file=$EXCLUDE_FILE")
     fi
 
-    backup_cmd+=("--tag" "homelab2" "--tag" "daily")
+    backup_cmd+=("--tag" "fidelacchius" "--tag" "daily")
 
     if [[ "$VERBOSE" == true ]]; then
         backup_cmd+=("--verbose")

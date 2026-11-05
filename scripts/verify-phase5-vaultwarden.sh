@@ -159,7 +159,7 @@ log_check() {
 }
 
 if [[ "$JSON_MODE" != "true" ]]; then
-    echo -e "${BLUE}=== homelab2 Phase 5 Vaultwarden Acceptance Verification Suite ===${NC}"
+    echo -e "${BLUE}=== fidelacchius Phase 5 Vaultwarden Acceptance Verification Suite ===${NC}"
     if [[ "$LOCAL_MODE" == "true" ]]; then
         echo "Execution Target: localhost (local execution)"
     else
@@ -197,13 +197,14 @@ else
     if [[ "$JSON_MODE" != "true" ]]; then exit 3; fi
 fi
 
-# VW-04: Secret Decoupling & Isolation
+# VW-04: Secret Decoupling, Isolation & Domain Configuration
 OUT_ENV=$(run_cmd_capture "stat -c '%a' /opt/services/vaultwarden/.env" || true)
-OUT_GREP=$(cd "$REPO_ROOT" && git grep -E "(ADMIN_TOKEN=.*[^\"'\$]|vaultwarden_admin_token_hash: [^\$\"'])" -- ":^ansible/inventory/group_vars/all/vault.sops.yml" ":^*.md" 2>/dev/null || true)
-if [[ "$OUT_ENV" == "600" && -z "$OUT_GREP" ]]; then
-    log_check 3 "PASS" ".env mode 0600, zero cleartext git leaks"
+OUT_GREP=$(cd "$REPO_ROOT" && git grep -E "(ADMIN_TOKEN=.*[^\"'\$]|vaultwarden_admin_token_hash: [^\$\"'])" -- ":^ansible/inventory/group_vars/all/vault.sops.yml" ":^*.md" ":^*.j2" ":^scripts/*" 2>/dev/null || true)
+OUT_DOMAIN=$(run_cmd_capture "sudo grep -E '^DOMAIN=' /opt/services/vaultwarden/.env 2>/dev/null | cut -d'=' -f2-" || true)
+if [[ "$OUT_ENV" == "600" && -z "$OUT_GREP" && "$OUT_DOMAIN" == "https://fidelacchius.fable-mackarel.ts.net" ]]; then
+    log_check 3 "PASS" ".env mode 0600, DOMAIN is https://fidelacchius.fable-mackarel.ts.net, zero cleartext git leaks"
 else
-    log_check 3 "FAIL" ".env mode $OUT_ENV or git secrets leak detected"
+    log_check 3 "FAIL" ".env mode $OUT_ENV, DOMAIN='$OUT_DOMAIN' (expected https://fidelacchius.fable-mackarel.ts.net), or git secrets leak detected"
     if [[ "$JSON_MODE" != "true" ]]; then exit 4; fi
 fi
 
@@ -216,17 +217,18 @@ else
     if [[ "$JSON_MODE" != "true" ]]; then exit 5; fi
 fi
 
-# VW-06: Reverse Proxy HTTPS & Ingress
-OUT_INGRESS_CODE=$(run_cmd_capture "curl -k -s -o /dev/null -w '%{http_code}' https://127.0.0.1/alive -H 'Host: vaultwarden.lan'" || true)
+# VW-06: Reverse Proxy / Funnel HTTPS Ingress
+TS_IP=$(tailscale ip -4 2>/dev/null || echo "100.120.174.15")
+OUT_INGRESS_CODE=$(run_cmd_capture "curl -k -s -o /dev/null -w '%{http_code}' --resolve fidelacchius.fable-mackarel.ts.net:443:${TS_IP} https://fidelacchius.fable-mackarel.ts.net/alive" || true)
 if [[ "$OUT_INGRESS_CODE" == "200" ]]; then
-    log_check 5 "PASS" "Caddy HTTPS reverse proxy routed successfully (HTTP 200)"
+    log_check 5 "PASS" "Tailscale Funnel HTTPS reverse proxy routed successfully (HTTP 200)"
 else
-    log_check 5 "FAIL" "Caddy HTTPS returned HTTP $OUT_INGRESS_CODE"
+    log_check 5 "FAIL" "Tailscale Funnel HTTPS returned HTTP $OUT_INGRESS_CODE"
     if [[ "$JSON_MODE" != "true" ]]; then exit 6; fi
 fi
 
 # VW-07: WebSocket Upgrade Handshake
-WS_HEADERS=$(run_cmd_capture "curl --http1.1 -k -i -N -H 'Connection: Upgrade' -H 'Upgrade: websocket' -H 'Host: vaultwarden.lan' -H 'Sec-WebSocket-Key: SGVsbG8sIHdvcmxkIQ==' -H 'Sec-WebSocket-Version: 13' --max-time 3 https://127.0.0.1/notifications/hub 2>&1" || true)
+WS_HEADERS=$(run_cmd_capture "curl --http1.1 -k -i -N -H 'Connection: Upgrade' -H 'Upgrade: websocket' -H 'Sec-WebSocket-Key: SGVsbG8sIHdvcmxkIQ==' -H 'Sec-WebSocket-Version: 13' --max-time 5 --resolve fidelacchius.fable-mackarel.ts.net:443:${TS_IP} https://fidelacchius.fable-mackarel.ts.net/notifications/hub 2>&1" || true)
 if echo "$WS_HEADERS" | grep -qiE "(101 Switching Protocols|Upgrade: websocket|Invalid claim|401 Unauthorized)"; then
     log_check 6 "PASS" "WebSocket endpoint reached via reverse proxy (handshake/upgrade valid)"
 else

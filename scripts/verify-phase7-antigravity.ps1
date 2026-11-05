@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    PowerShell acceptance verification runner for homelab2 Feature 007 (Target Host Antigravity & Remote Control).
+    PowerShell acceptance verification runner for fidelacchius Feature 007 (Target Host Antigravity & Remote Control).
 .DESCRIPTION
     Executes the 8-point acceptance assertion suite against the target production host
     via SSH or local execution.
@@ -24,7 +24,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 if (-not $Json) {
-    Write-Host "=== homelab2 Feature 007 Verification Orchestrator (PowerShell) ===" -ForegroundColor Cyan
+    Write-Host "=== fidelacchius Feature 007 Verification Orchestrator (PowerShell) ===" -ForegroundColor Cyan
     Write-Host "Target Host : $User@$TargetHost"
 }
 

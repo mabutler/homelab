@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/verify-phase2.sh
-# Acceptance verification runner for homelab2 Phase 2 (Core Hardening & IaC)
+# Acceptance verification runner for fidelacchius Phase 2 (Core Hardening & IaC)
 # Enforces the 10-point Health Assertion Matrix from contracts/verification-suite.md
 
 set -euo pipefail
@@ -82,7 +82,7 @@ if [[ -n "$IDENTITY_FILE" ]]; then
     SSH_OPTS+=(-i "$IDENTITY_FILE")
 fi
 
-echo -e "${BLUE}=== homelab2 Phase 2 Automated Acceptance Verification ===${NC}"
+echo -e "${BLUE}=== fidelacchius Phase 2 Automated Acceptance Verification ===${NC}"
 echo "Target Host : $TARGET_HOST"
 echo "Target User : $SSH_USER"
 echo "Identity    : ${IDENTITY_FILE:-Default SSH Agent / Config}"

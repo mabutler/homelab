@@ -32,7 +32,7 @@ if ($IdentityFile) {
 }
 
 if (-not $Json) {
-    Write-Host "=== homelab2 Phase 5 Backup Acceptance Verification Runner ===" -ForegroundColor Cyan
+    Write-Host "=== fidelacchius Phase 5 Backup Acceptance Verification Runner ===" -ForegroundColor Cyan
     Write-Host "Target Host : $User@$TargetHost"
 }
 

@@ -21,7 +21,7 @@ Usage: restore-from-b2.sh [OPTIONS]
 Options:
   --account-id ID       Backblaze B2 Application Key ID (or env B2_ACCOUNT_ID)
   --account-key KEY     Backblaze B2 Application Key (or env B2_ACCOUNT_KEY)
-  --repository REPO     Restic repository URI, e.g. b2:bucket:path (or env RESTIC_REPOSITORY)
+  --repository REPO     Restic repository URI, e.g. b2:fidelacchius-backups:fidelacchius (or env RESTIC_REPOSITORY)
   --password PASS       Restic repository password (or env RESTIC_PASSWORD)
   --snapshot ID         Snapshot ID to restore (default: latest)
   --target-dir DIR      Destination directory for restoration (default: /)
