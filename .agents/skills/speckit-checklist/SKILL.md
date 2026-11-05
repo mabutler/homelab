@@ -84,9 +84,17 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 ## Execution Steps
 
-1. **Setup**: Run `.specify/scripts/powershell/check-prerequisites.ps1 -Json -Template checklist-template` from repo root and parse JSON for FEATURE_DIR, AVAILABLE_DOCS list, and TEMPLATE_CONTENT.
-   - All file paths must be absolute.
-   - For single quotes in args like "I'm Groot", use escape syntax: e.g 'I'\''m Groot' (or double-quote if possible: "I'm Groot").
+1. **Setup**: Discover `FeatureContext` and active feature paths natively:
+   - Check environment variable `SPECIFY_FEATURE_DIRECTORY` or read `.specify/feature.json` for `feature_directory`.
+   - Derive absolute path `FEATURE_DIR`. Validate that `feature_directory` MUST NOT be empty and `${FEATURE_DIR}/spec.md` exists on disk.
+   - Scan `AVAILABLE_DOCS` list under `FEATURE_DIR` (e.g. `spec.md`, `plan.md`, `tasks.md`, `research.md`, `data-model.md`, `contracts/`, `quickstart.md`).
+   - Resolve `checklist-template` across the 4-tier hierarchy:
+     1. Tier 1 (Overrides): `.specify/templates/overrides/checklist-template.md`
+     2. Tier 2 (Presets): `.specify/presets/<preset-id>/templates/checklist-template.md` (per `.specify/presets/.registry`, respecting composition strategies)
+     3. Tier 3 (Extensions): `.specify/extensions/<ext-id>/templates/checklist-template.md` (per `.specify/extensions/.registry`)
+     4. Tier 4 (Core Fallback): `.specify/templates/checklist-template.md`
+     - Invariant: If a requested template is not found in any of the 4 tiers, the agent MUST fail closed and emit an error per Principle II.
+     - Store the resolved content as `TEMPLATE_CONTENT`.
 
 2. **IF EXISTS**: Load `.specify/memory/constitution.md` for project principles and governance constraints.
 

@@ -1,19 +1,16 @@
 {
   "integration": "speckit",
-  "version": "1.1.3",
-  "installed_at": "2026-10-11T12:05:34.621131+00:00",
+  "version": "1.4.0",
+  "installed_at": "2026-11-05T12:00:00+00:00",
   "files": {
-    ".specify/scripts/powershell/check-prerequisites.ps1": "af4b8f5e8d373827726b79532cf57c567b1538c0494058d8095683c7fe107c49",
-    ".specify/scripts/powershell/common.ps1": "9837a02a1ca9e61a16a1ff7ec7429c95d8e1c87ec49400cc2807133bb89a5317",
-    ".specify/scripts/powershell/create-new-feature.ps1": "481c7368541a816b1679e5ed65fa9e5aea84b09f8be3a02ff8a340e3b48dd58a",
-    ".specify/scripts/powershell/resolve-template.ps1": "e49c565a09902e4ebd4b5a51c4e014d5067fdee5b1592f15cb44ef31f430d745",
-    ".specify/scripts/powershell/setup-plan.ps1": "3b8173f1553bbf67ae021af949a29e2d3e3bb35805be95e4ba8d0ab83173c66f",
-    ".specify/scripts/powershell/setup-tasks.ps1": "57cd05e12bd472c60ac0554ad61b89770c278d50c48e484fb824196f44f75076",
-    ".specify/templates/checklist-template.md": "856532b3cb66171c662cc16f16b31a5856e4655a8666aad1e545bbfc7f603ca1",
-    ".specify/templates/constitution-template.md": "ce7549540fa45543cca797a150201d868e64495fdff39dc38246fb17bd4024b3",
-    ".specify/templates/plan-template.md": "7e637502d41eccf0ca672496636365691fdca62ef37b27ec07fcb412dbfa90d4",
-    ".specify/templates/spec-template.md": "3945437fc35cd30a5b2bf7beea680337c3516826d3efa5a6b92c4a7eca1ba28e",
-    ".specify/templates/tasks-template.md": "fc29a233f6f5a27ca31f1aa46b596af6500c627441c6e62b2bc4a1d721525842",
+    ".specify/templates/checklist-template.md": "85aff7c63f600aaf4996f90b91d113b5bb00291d44867b5a19503b9fefff2268",
+    ".specify/templates/coding-standards-template.md": "44e55ee858aff279fab8b09e9bfbd656ef67b41c08428fd0721a6d8f2dededd7",
+    ".specify/templates/constitution-template.md": "81b423266ed16bb5cf87c425d39a03a8e7579d7419917f90163b74d1b530c00a",
+    ".specify/templates/logging-standards-template.md": "3d25c07d290403336557b2fc0ded22fce771a4acf2746f7f5249762240796b5f",
+    ".specify/templates/plan-template.md": "9d927ea14308eb008fb61faab6bbcc5c5136b84e36102458afc6ab347474f724",
+    ".specify/templates/roadmap-template.md": "50c19f8a75298ad3825a7d0af2764f6792643916fcfeaf3f7c224ee4ab7a83cc",
+    ".specify/templates/spec-template.md": "ef73b63c629d0a99c003d7a0fe1ccb4f98c227cedccb56c9313422e934e3569a",
+    ".specify/templates/tasks-template.md": "f2d1b7652cd242abd495b5c839dd8fa297783f10f01ffabc8845d5df49c4ad74",
     ".specify/.gitignore": "0a61c5378b0bb2e0f85babff99c8b166f2170a2c12378cd17d929aa19296ec88"
   }
 }

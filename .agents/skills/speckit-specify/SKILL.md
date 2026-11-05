@@ -56,6 +56,31 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 The text the user typed after `/speckit-specify` in the triggering message **is** the feature description. Assume you always have it available in this conversation even if `$ARGUMENTS` appears literally below. Do not ask the user to repeat it unless they provided an empty command.
 
+0. **Roadmap Reference Parsing & Phase Context Extraction**:
+   Check if the user input references a roadmap phase (e.g., `"next roadmap phase"`, `"Phase N"`, `--next`, or handoff from `/speckit-roadmap --next` / `--specify <phase>`):
+   - **Locate & Parse `ROADMAP.md`**:
+     Read `${REPO_ROOT}/ROADMAP.md`. If missing or empty, fail closed with a `WARN` rejection:
+     `[WARN] Boundary rejection: ROADMAP.md is missing or empty. Please run /speckit-roadmap first or provide an explicit feature description.`
+     and halt before creating any files.
+   - **Select Target Phase**:
+     - If a specific phase (e.g., `Phase N`) was requested, select `Phase N`.
+     - If `"next roadmap phase"` or `--next` was requested, evaluate phase statuses using deterministic evidence rules (inspecting `specs/NNN-*` and `ROADMAP.md`) and select the earliest `PLANNED` phase whose declared `Prerequisites` are all `COMPLETED` (and not already `IN_PROGRESS` or `COMPLETED` in current checkout or an active worktree).
+   - **Verify Prerequisites**:
+     - Confirm all prerequisite phases listed for the target phase have status `COMPLETED`.
+     - If any prerequisite is incomplete, halt before creating the spec directory, emit a `WARN` boundary rejection naming the incomplete prerequisite(s), and ask for confirmation (`--force`).
+   - **Extract Authoritative Phase Context**:
+     Extract from the target phase in `ROADMAP.md`:
+     - `Initiative Title` (derives `<short-name>`)
+     - `Goal` (from Overview of Initiatives table)
+     - `### Problem Statement`
+     - `### Architectural Fit in Spec Kit`
+     - `### Key Deliverables`
+     - `### Key Design Decisions to Resolve During Spec`
+     Combine these structured inputs with any additional user constraints in `$ARGUMENTS` to populate `SPECIFY_FEATURE_DIRECTORY/spec.md`.
+   - **Update `ROADMAP.md` Phase State**:
+     - Update the selected phase's `Status` to `IN_PROGRESS` and `Spec` to `specs/<NNN>-<short-name>/` in both the `## Overview of Initiatives` table and the phase's `### Metadata` block.
+     - Update `**Last Updated**: YYYY-MM-DD` in `ROADMAP.md`.
+
 Given that feature description, do this:
 
 1. **Generate a concise short name** (2-4 words) for the feature:
@@ -70,8 +95,21 @@ Given that feature description, do this:
      - "Create a dashboard for analytics" → "analytics-dashboard"
      - "Fix payment processing timeout bug" → "fix-payment-timeout"
 
-2. **Branch creation** (optional, via hook):
+2. **Git Branch & Worktree Isolation**:
 
+   **Git Worktree Isolation Protocol** (when requested via `"Use a worktree"`, `"in a worktree"`, or `--worktree`):
+   1. **Determine Feature Slug & Branch (`<NNN>-<short-name>`)**:
+      - Scan `specs/` across the main checkout and active `git worktree list` branches to determine the next available 3-digit sequential prefix `<NNN>` (or match `Phase N` → `00N-<short-name>`).
+   2. **Configure Local Git Exclusion**:
+      - Ensure `.worktrees/` is present in the primary repository's `.git/info/exclude` file so worktree directories never appear as untracked files in `git status`.
+   3. **Create Isolated Worktree**:
+      - Execute `git worktree add -b <NNN>-<short-name> .worktrees/<NNN>-<short-name> HEAD` (or if branch `<NNN>-<short-name>` already exists, `git worktree add .worktrees/<NNN>-<short-name> <NNN>-<short-name>`).
+   4. **Isolate Feature State Inside Worktree**:
+      - Set active workspace root for the specification and downstream pipeline to `${PRIMARY_REPO_ROOT}/.worktrees/<NNN>-<short-name>`.
+      - Create `specs/<NNN>-<short-name>/spec.md` and `specs/<NNN>-<short-name>/checklists/requirements.md` inside the worktree.
+      - Write `{"feature_directory": "specs/<NNN>-<short-name>"}` to `.worktrees/<NNN>-<short-name>/.specify/feature.json`, leaving the primary checkout's `.specify/feature.json` untouched.
+
+   **Standard Branch Creation** (when not using worktrees):
    If a `before_specify` hook ran successfully in the Pre-Execution Checks above, it will have created/switched to a git branch and output JSON containing `BRANCH_NAME` and `FEATURE_NUM`. Note these values for reference, but the branch name does **not** dictate the spec directory name.
 
    If the user explicitly provided `GIT_BRANCH_NAME`, pass it through to the hook so the branch script uses the exact value as the branch name (bypassing all prefix/suffix generation).
@@ -91,9 +129,14 @@ Given that feature description, do this:
       - If `branch_numbering` was used (and `feature_numbering` was absent), emit a one-line warning: "⚠️ `branch_numbering` in init-options.json is deprecated. Rename to `feature_numbering`."
 
    **Create the directory and spec file**:
+   - Resolve `spec-template` using native agent 4-tier template resolution:
+     1. Tier 1 (Overrides): Check if `.specify/templates/overrides/spec-template.md` exists. If so, use its content (strategy: `replace`).
+     2. Tier 2 (Presets): If `.specify/presets/.registry` exists, inspect enabled presets in order of ascending priority. Check the preset manifest (`preset.yml`) under `.specify/presets/<preset-id>/` for declared `spec-template` templates and compose using declared strategy (`replace`, `prepend`, `append`, `wrap`).
+     3. Tier 3 (Extensions): If `.specify/extensions/.registry` exists, inspect enabled extensions in order of ascending priority for declared `spec-template` templates.
+     4. Tier 4 (Core Fallback): Read `.specify/templates/spec-template.md`.
+     - Invariant: If `spec-template` is not found in any of the 4 tiers, the agent MUST fail closed and emit an error per Principle II. Parse `TEMPLATE_CONTENT` as the active resolved template.
    - `mkdir -p SPECIFY_FEATURE_DIRECTORY`
-   - Resolve the active `spec-template` through the Spec Kit preset/template resolution stack (equivalent to `specify preset resolve spec-template`)
-   - Copy the resolved `spec-template` file to `SPECIFY_FEATURE_DIRECTORY/spec.md` as the starting point
+   - Write `TEMPLATE_CONTENT` to `SPECIFY_FEATURE_DIRECTORY/spec.md` as the starting point. Do not copy a template file from disk instead: when a preset composes `spec-template`, no single file holds the full template.
    - Set `SPEC_FILE` to `SPECIFY_FEATURE_DIRECTORY/spec.md`
    - Persist the resolved path to `.specify/feature.json`:
      ```json
@@ -109,7 +152,7 @@ Given that feature description, do this:
    - The spec directory name and the git branch name are independent — they may be the same but that is the user's choice
    - The spec directory and file are always created by this command, never by the hook
 
-4. Load the resolved active `spec-template` file to understand required sections.
+4. Use `TEMPLATE_CONTENT` to understand required sections.
 
 5. **IF EXISTS**: Load `.specify/memory/constitution.md` for project principles and governance constraints.
 
@@ -341,5 +384,7 @@ Success criteria must be:
 ## Done When
 
 - [ ] Specification written to `SPEC_FILE` and validated against quality checklist
+- [ ] Roadmap phase updated to `IN_PROGRESS` with linked spec directory in `ROADMAP.md` (if initiated from a roadmap phase)
+- [ ] Git worktree isolated and configured in `.specify/feature.json` (if worktree isolation requested)
 - [ ] Extension hooks dispatched or skipped according to the rules in Mandatory Post-Execution Hooks above
 - [ ] Completion reported to user with feature directory, spec file path, and checklist results

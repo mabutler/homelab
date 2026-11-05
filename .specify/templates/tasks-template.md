@@ -5,9 +5,26 @@ description: "Task list template for feature implementation"
 
 # Tasks: [FEATURE NAME]
 
+<!--
+Template Resolution Hierarchy & FeatureContext Specification:
+This template is resolved by agent skills using the native 4-tier template resolution hierarchy:
+- Tier 1 (Overrides): .specify/templates/overrides/tasks-template.md
+- Tier 2 (Presets): .specify/presets/<preset-id>/templates/tasks-template.md (evaluated per .specify/presets/.registry sorted ascending by priority; strategy: replace, prepend, append, wrap)
+- Tier 3 (Extensions): .specify/extensions/<ext-id>/templates/tasks-template.md (evaluated per .specify/extensions/.registry sorted ascending by priority)
+- Tier 4 (Core Fallback): .specify/templates/tasks-template.md
+
+Invariant: If a requested template is not found in any of the 4 tiers, the agent MUST fail closed and emit an error per Principle II
+
+FeatureContext Resolution:
+feature_directory MUST NOT be empty and ${FEATURE_DIR} MUST exist for downstream skills.
+Context is discovered via SPECIFY_FEATURE_DIRECTORY env variable or .specify/feature.json.
+-->
+
 **Input**: Design documents from `/specs/[###-feature-name]/`
 
 **Prerequisites**: plan.md (required), spec.md (required for user stories), research.md, data-model.md, contracts/
+
+**Documentation Impact**: When `Documentation Impact` in `plan.md` is `USER_FACING`, human-facing documentation tasks (`README.md`, user guides) MUST be generated with exact file paths in the relevant User Story phase or Polish phase. When `INTERNAL_ONLY`, artificial `README.md` tasks are omitted so internal refactors incur zero documentation churn.
 
 **Tests**: The examples below include test tasks. Tests are OPTIONAL - only include them if explicitly requested in the feature specification.
 
@@ -151,7 +168,7 @@ Examples of foundational tasks (adjust based on your project):
 
 **Purpose**: Improvements that affect multiple user stories
 
-- [ ] TXXX [P] Documentation updates in docs/
+- [ ] TXXX [P] Human-facing documentation updates (e.g., `README.md`, docs/) when `Documentation Impact` is `USER_FACING` (omitted if `INTERNAL_ONLY`)
 - [ ] TXXX Code cleanup and refactoring
 - [ ] TXXX Performance optimization across all stories
 - [ ] TXXX [P] Additional unit tests (if requested) in tests/unit/

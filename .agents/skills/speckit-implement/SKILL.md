@@ -54,7 +54,11 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 ## Outline
 
-1. Run `.specify/scripts/powershell/check-prerequisites.ps1 -Json -RequireTasks -IncludeTasks` from repo root and parse FEATURE_DIR and AVAILABLE_DOCS list. All paths must be absolute. For single quotes in args like "I'm Groot", use escape syntax: e.g 'I'\''m Groot' (or double-quote if possible: "I'm Groot").
+1. Discover `FeatureContext` and active feature paths natively:
+   - Check environment variable `SPECIFY_FEATURE_DIRECTORY` or read `.specify/feature.json` for `feature_directory`.
+   - Derive absolute path `FEATURE_DIR`. Validate that `feature_directory` MUST NOT be empty and `${FEATURE_DIR}/tasks.md` exists on disk.
+   - Scan `AVAILABLE_DOCS` list under `FEATURE_DIR` (e.g. `spec.md`, `plan.md`, `tasks.md`, `research.md`, `data-model.md`, `contracts/`, `quickstart.md`).
+   - If missing, abort with an error message instructing the user to run `/speckit-tasks`.
 
 2. **Check checklists status** (if FEATURE_DIR/checklists/ exists):
    - Treat checklist markers as a read-only gate: scan checkbox state, report status, and ask before proceeding when needed; do NOT modify checklist files or markers
@@ -96,7 +100,7 @@ You **MUST** consider the user input before proceeding (if not empty).
    - **IF EXISTS**: Read data-model.md for entities and relationships
    - **IF EXISTS**: Read contracts/ for API specifications and test requirements
    - **IF EXISTS**: Read research.md for technical decisions and constraints
-   - **IF EXISTS**: Read .specify/memory/constitution.md for governance constraints
+   - **IF EXISTS**: Read project governance suite: `.specify/memory/constitution.md`, `.specify/memory/coding-standards.md`, and `.specify/memory/logging-standards.md` for constitutional principles, stack-specific coding conventions, and logging/telemetry rules. (If companion standards are missing in a legacy repo, proceed with `constitution.md`).
    - **IF EXISTS**: Read quickstart.md for integration scenarios
 
 4. **Project Setup Verification**:
@@ -155,6 +159,7 @@ You **MUST** consider the user input before proceeding (if not empty).
    - **Follow TDD approach**: Execute test tasks before their corresponding implementation tasks
    - **File-based coordination**: Tasks affecting the same files must run sequentially
    - **Validation checkpoints**: Verify each phase completion before proceeding
+   - **Enforce governance conventions**: Ensure all written code, error handling, tests, and log statements comply with `.specify/memory/constitution.md`, `.specify/memory/coding-standards.md`, and `.specify/memory/logging-standards.md`. When `Documentation Impact` is `USER_FACING`, verify that all planned human-facing documentation files (`README.md`, user guides) have been created or updated to match actual as-built behavior, contain valid relative links, and include zero references to ephemeral `specs/NNN-*/` directories or `FR-XXX`/`SC-XXX` identifiers per Principle VII and Development Workflow & Quality Gates (exempting `INTERNAL_ONLY` changes).
 
 7. Implementation execution rules:
    - **Setup first**: Initialize project structure, dependencies, configuration
@@ -175,7 +180,8 @@ You **MUST** consider the user input before proceeding (if not empty).
    - Verify all required tasks are completed
    - Check that implemented features match the original specification
    - Validate that tests pass and coverage meets requirements
-   - Confirm the implementation follows the technical plan
+   - Confirm the implementation follows the technical plan and complies with `.specify/memory/constitution.md`, `.specify/memory/coding-standards.md`, and `.specify/memory/logging-standards.md` (including running configured build/linter/acceptance gate commands)
+   - When `Documentation Impact` is `USER_FACING`, verify human-facing documentation updates match as-built behavior, contain valid relative links, and have zero citations of ephemeral `specs/NNN-*/` folders or `FR-XXX`/`SC-XXX` identifiers (whereas `INTERNAL_ONLY` changes incur zero artificial documentation updates)
 
 Note: This command assumes a complete task breakdown exists in tasks.md. If tasks are incomplete or missing, suggest running `/speckit-tasks` first to regenerate the task list.
 

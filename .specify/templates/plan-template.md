@@ -6,6 +6,21 @@
 
 **Note**: This template is filled in by the `/speckit-plan` command; its definition describes the execution workflow.
 
+<!--
+Template Resolution Hierarchy & FeatureContext Specification:
+This template is resolved by agent skills using the native 4-tier template resolution hierarchy:
+- Tier 1 (Overrides): .specify/templates/overrides/plan-template.md
+- Tier 2 (Presets): .specify/presets/<preset-id>/templates/plan-template.md (evaluated per .specify/presets/.registry sorted ascending by priority; strategy: replace, prepend, append, wrap)
+- Tier 3 (Extensions): .specify/extensions/<ext-id>/templates/plan-template.md (evaluated per .specify/extensions/.registry sorted ascending by priority)
+- Tier 4 (Core Fallback): .specify/templates/plan-template.md
+
+Invariant: If a requested template is not found in any of the 4 tiers, the agent MUST fail closed and emit an error per Principle II
+
+FeatureContext Resolution:
+feature_directory MUST NOT be empty and ${FEATURE_DIR} MUST exist for downstream skills.
+Context is discovered via SPECIFY_FEATURE_DIRECTORY env variable or .specify/feature.json.
+-->
+
 ## Summary
 
 [Extract from feature spec: primary requirement + technical approach from research]
@@ -36,11 +51,13 @@
 
 **Scale/Scope**: [domain-specific, e.g., 10k users, 1M LOC, 50 screens or NEEDS CLARIFICATION]
 
+**Documentation Impact**: [USER_FACING (list affected human-facing docs, e.g., README.md, docs/...) or INTERNAL_ONLY (1-sentence rationale why no user-visible CLI, skill, API, config, or workflow changes occur)]
+
 ## Constitution Check
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-[Gates determined based on constitution file]
+[Gates determined based on constitution file; evaluate Principle VII human-facing documentation impact (USER_FACING target files vs. INTERNAL_ONLY exemption rationale) alongside testing and architectural gates before Phase 0 and re-check after Phase 1]
 
 ## Project Structure
 

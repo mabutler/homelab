@@ -1,158 +1,125 @@
 <!--
-Sync Impact Report:
-- Version Change: 1.2.0 -> 1.3.0
-- Modified Principles:
-  - IV. Zero Secrets in Version Control & Isolated Configuration (Prohibited committing secrets even in encrypted form; mandated committed *.example templates and gitignored real secret files, with automated recovery via encrypted offsite backups)
-  - V. Disaster Recovery & Backup by Design (Codified Backblaze B2 via Restic client-side encryption as the primary offsite backup target capturing both app data and gitignored secrets)
-- Modified Sections:
-  - Workflow & Quality Gates (Explicitly included gitignored secret files and B2 snapshot verification in application and platform gates)
-- Rationale: Eliminated repository friction and potential leak surface of committed ciphertext by adopting gitignored secret files with committed *.example templates, ensuring complete disaster recovery via offsite encrypted Restic backups to Backblaze B2.
+Sync Impact Report (Latest Amendment Only — Do Not Accumulate History):
+- Version Change: 1.3.0 -> 2.0.0
+- Modified Principles: Merged the 7 universal Core Principles (I–VII) from the v1.4.0 Standard Base Template with the ratified homelab2 domain and infrastructure principles (Pragmatic Declarative-First Automation, Strict Idempotency & Safe Convergence, Continuous Backup & Telemetry Verification Gates, Zero Secrets in Version Control & Isolated Configuration, Disaster Recovery via Backblaze B2 & Restic, Modular & Decoupled Architecture, and Stability-First & Annual Maintenance Cadence).
+- Modified Sections: Added Sources of Truth & Authority Hierarchy and Recorded Deviations; merged Operational & Security Standards, Development Workflow & Quality Gates, and Governance.
+- Optional Modules: MODULE-A: OMITTED, MODULE-B: OMITTED, MODULE-C: OMITTED, MODULE-D: OMITTED (MODULE-D-AOT-TRIM: OMITTED), MODULE-DOCS: ENABLED, TRACE Logging: OMITTED
+- Companion Standards: coding-standards.md (created), logging-standards.md (created)
+- Rationale: Co-apply the Spec Kit v1.4.0 3-document governance suite (constitution.md, coding-standards.md, logging-standards.md) by merging the new base template structure with the existing homelab2 v1.3.0 constitutional rules.
+- Deferred TODOs: None
 -->
 
 # homelab2 Constitution
 
+<!--
+Template Resolution Hierarchy Specification:
+This template is resolved by agent skills using the native 4-tier template resolution hierarchy:
+- Tier 1 (Overrides): .specify/templates/overrides/constitution-template.md
+- Tier 2 (Presets): .specify/presets/<preset-id>/templates/constitution-template.md (evaluated per .specify/presets/.registry sorted ascending by priority; strategy: replace, prepend, append, wrap)
+- Tier 3 (Extensions): .specify/extensions/<ext-id>/templates/constitution-template.md (evaluated per .specify/extensions/.registry sorted ascending by priority)
+- Tier 4 (Core Fallback): .specify/templates/constitution-template.md
+
+Invariant: If a requested template is not found in any of the 4 tiers, the agent MUST fail closed and emit an error per Principle II.
+-->
+
+## Sources of Truth & Authority Hierarchy
+
+When specifications, reference documents, test harnesses, or existing code disagree, authority ranks in this strict order:
+
+1. **Ratified Governance & Feature Specifications** (`.specify/memory/constitution.md`, `ROADMAP.md`, and active feature specifications & verification contracts in `specs/`)
+2. **Reconciled Architecture & Operational Documentation** (`docs/roadmap.md`, `docs/operations.md`, `docs/disaster-recovery-phase3.md`, `README.md`)
+3. **Declarative Infrastructure Inventory & Automation Harnesses** (`ansible/inventory/`, `ansible/roles/`, `ansible/playbooks/`, and `scripts/`)
+
 ## Core Principles
 
-### I. Pragmatic Declarative-First Automation
-Infrastructure MUST be declared using configuration management and Infrastructure-as-Code
-(e.g., Ansible, OpenTofu) as the primary automation interface. When declarative tooling
-encounters friction, poor ecosystem support, or disproportionate complexity (e.g., storage pooling
-such as mergerfs, hardware-specific partitioning), automation MUST cleanly fall back to modular,
-self-contained, idempotent shell scripts. Script fallbacks MUST maintain explicit contracts,
-document inputs/outputs, and live in designated script modules rather than inline workarounds.
+### I. Evidence Over Invention, Bounded Investigation & Pragmatic Declarative-First Automation
+Every domain behavior, protocol constant, schema element, hardware mapping, and security requirement MUST trace to an authoritative source listed in the Authority Hierarchy above. Neither a human nor an AI agent may fill an unverified gap with a plausible guess or inference by analogy.
+- **Bounded, Cited Research**: Investigation MUST traverse the Authority Hierarchy in order, consulting local reference and architecture documentation before opening primary specs or legacy source repositories. Primary source digs MUST be bounded to the specific file or section answering the question and cite `file:line` or section/page numbers. If the sources do not answer the question, the required output is **NOT FOUND** naming what was searched.
+- **Centralized Open Questions**: Every unknown, ambiguity, or deferred gap that outlives a single task MUST be recorded in `reference/open-questions.md` (citing what was checked, who can resolve it, and any temporary working assumption). Undocumented gaps or silent placeholders are defects.
+- **Pragmatic Declarative-First Automation**: Infrastructure MUST be declared using configuration management and Infrastructure-as-Code (e.g., Ansible, OpenTofu) as the primary automation interface. When declarative tooling encounters friction, poor ecosystem support, or disproportionate complexity (e.g., storage pooling such as mergerfs, hardware-specific partitioning), automation MUST cleanly fall back to modular, self-contained, idempotent shell scripts. Script fallbacks MUST maintain explicit contracts, document inputs/outputs, and live in designated script modules rather than inline workarounds.
 
-*Rationale: Declarative IaC ensures reproducibility and maintainability, but dogmatic purity
-creates brittle edge cases. Pragmatic scripting fallbacks keep the stack robust and easy to operate.*
+### II. Two-Tier Failure Model, Fail Closed on Required State & Strict Idempotency
+Failures divide into two distinct categories and MUST be handled accordingly:
+- **Rejected Operations (Expected / External Failures)**: Invalid inputs, unsupported requests, or transient boundary/I/O failures MUST be detected at the earliest boundary, aborted before mutating state, logged at `WARN`, and returned as an explicit, typed error result (or non-zero exit code with actionable stderr message) while leaving the system running. Low-level I/O and cryptographic exceptions MUST be caught narrowly at the boundary and translated into typed errors.
+- **Defect Invariants (Broken Internal State)**: Programmer errors, violated preconditions, or corrupted internal state MUST NOT be caught to keep running. The affected execution scope MUST log at `CRITICAL` and halt/restart immediately so untrusted state cannot propagate.
+- **Explicit Exception Disposition**: Every `catch` block or error trap MUST either (1) translate the exception into a typed boundary error, (2) enrich and rethrow, or (3) log at `WARN` and isolate/continue *only* on designated non-critical paths (e.g., best-effort cleanup or isolated dispatch loops) where failure cannot corrupt state or masquerade as a successful mutation. Truly silent swallowing requires an inline comment proving why ignoring the failure is safe.
+- **Explicit Unimplemented Semantics**: Code MUST NOT substitute guessed defaults for missing required data. Unimplemented or intentionally unsupported operations on an interface surface MUST return distinct, typed `NotImplemented` or `Unsupported` results—never empty method bodies that simulate success.
+- **Fail Closed on Required State**: State, checks, or configuration required for security, integrity, or diagnosability MUST be established before dependent functions run. Quietly degrading, continuing with a warning, or retrying silently in the background is forbidden unless ratified under Recorded Deviations.
+- **Strict Idempotency & Safe Convergence**: All automation routines, playbooks, tasks, and scripts MUST be safely re-runnable without unintended state divergence, duplicate resources, or service disruption. Executing automation against an already converged target MUST produce a clean, no-op exit.
 
-### II. Strict Idempotency & Safe Convergence
-All automation routines, playbooks, tasks, and scripts MUST be safely re-runnable without
-unintended state divergence, duplicate resources, or service disruption. Executing automation
-against an already converged target MUST produce a clean, no-op exit. Destructive operations
-(such as formatting drives, partition recreation, or secret destruction) MUST be protected by
-explicit opt-in verification guards and MUST NEVER execute silently or by default.
+### III. Behavioral, Value-Driven Testing, Deterministic Execution & Live Acceptance Gates
+Every automated test and verification check MUST guard meaningful behavioral contracts or plausible regressions through production entry points.
+- **Encapsulation & Contract Focus**: Visibility MUST NOT be widened (`private` to `public`), and test-only members MUST NOT be added solely to reach internals (internal-visibility exemptions require written justification). Tests MUST verify behavioral outcomes and MUST NOT assert on log text, operator display strings, or the absence of deleted code/files.
+- **Plan Justification & Skip Allowlist**: Every `/speckit-plan` MUST list the tests or verification assertions it intends to write and state what risk each guards against. Comprehensive behavioral and branch coverage is expected across all domain logic, state machines, parsers, and error boundaries. Omitting unit tests without a plan justification is permitted ONLY for:
+  1. Compiler-generated, schema-generated, or code-generator output.
+  2. Defect-invariant guards (unreachable-code traps and internal post-validation assertions) unreachable via public entry points.
+  3. Pure data carriers (DTOs, immutable value/record snapshots) and thin pass-through adapter wrappers over OS/hardware seams.
+  4. Application host bootstrap entry points, declarative CLI binding declarations, and declarative UI layout markup covered by smoke/acceptance gates.
+  5. One-off build/provisioning scripts and declarative infrastructure roles verified by automated linters (`ansible-lint`, `shellcheck`) and live acceptance gates (`scripts/verify-*.sh`).
+- **Unprivileged, Deterministic Unit Tests**: Automated unit tests MUST run without administrator/root privileges and MUST NOT touch real disks/partitions, real network endpoints, or committed cryptographic key material (ephemeral keys/certs are generated per run). Time MUST be injected via a time abstraction or explicit timestamps and randomness seeded.
+- **Hostile Boundary Coverage & Bug Ratchet**: Any parser of untrusted bytes or security verification gate MUST include negative and hostile-input tests (malformed payloads, oversized counts, offset overflows, bad signatures). Every defect discovered in integration testing, simulator runs, or production MUST receive a reproducing regression test or verification assertion alongside the fix.
+- **Automated Verification & Continuous Telemetry Gates**: No service, configuration, or infrastructure component is complete without automated verification. Every deployment MUST define explicit health assertions, smoke tests, or status checks (e.g., systemd unit active status, HTTP endpoint response, socket connectivity, mount accessibility). Automated tasks MUST verify that target states are live and functional before declaring completion, failing fast with actionable error messages on stderr. Early infrastructure phases prior to full network setup (e.g., Phase 1 live bootstrap and base OS installation) are EXEMPT from telemetry and observability verification gates; in these phases, verification is restricted to local health assertions (e.g., systemd unit active status, local log sinks, exit status). Once full network connectivity is operational (Phase 3 onward), telemetry and observability mechanisms (systemd unit monitoring, structured journal logging, metric endpoints, or healthcheck pingers) MUST be confirmed operational within each subsequent phase before declaring that phase complete. For Phase 5 (application platform), each individual application MUST verify its health check assertion and telemetry integration before that application can be declared complete.
 
-*Rationale: Infrastructure automation must inspire confidence; safe, repeatable convergence
-is required to support hands-off runs and automated maintenance.*
+### IV. Single Authoritative State, Enforced Boundaries, Safe Concurrency & Zero Secrets in Git
+- **Single Source of Truth**: Every piece of domain and infrastructure state MUST have exactly one authoritative owning model (as mapped in the Declarative Architecture & System Inventory Map in `ROADMAP.md`). Registries, lookup tables, and projections are read-only views or pure indexes—never competing, independently mutated copies of state owned elsewhere.
+- **Structurally Enforced Boundaries & Modular Architecture**: Core domain logic MUST NOT depend on wire/serialization schema types or raw OS/hardware/process I/O. Wire translation happens strictly at the boundary and is enforced at compile time via the build/module dependency graph, not by import conventions. Disk, network, process, and hardware access MUST sit behind interface seams so unit tests use fakes. System components, Ansible roles, and containerized applications MUST remain modular, loosely coupled, and independently operable over standardized protocols (e.g., TCP/IP, Unix sockets, REST) with clear network and storage boundaries so individual services can be deployed, restarted, or decommissioned without impacting unrelated workloads.
+- **Safe Concurrency & Snapshot Isolation**: A thread holding an entity state lock MUST NOT acquire another entity lock or invoke external callbacks, event subscribers, or cross-entity logic while holding the lock. Side effects are recorded inside the critical section and dispatched in order *after* the lock is released. Code outside an entity's lock works exclusively from immutable snapshots captured under the lock, never from live mutable references.
+- **Disambiguated Colliding Identifiers**: When two or more identifiers or unit-bearing quantities of the same primitive type (e.g., `DeviceId` and `HostId`) are routinely passed together across method boundaries, they MUST be wrapped in distinct, non-convertible value types. Single-identifier lookups may use standard primitives.
+- **Zero Secrets in Version Control & Isolated Configuration**: Sensitive parameters—including passwords, tokens, private keys, API credentials, and encryption keys—MUST NEVER be committed to version control, whether in plaintext or encrypted ciphertext form. Version control MUST only commit template example files (`*.example`). Real secrets MUST reside exclusively in gitignored files (e.g., `ansible/inventory/group_vars/all/vault.yml`, `/etc/homelab/vault.yml`, `*.env`) on the local workstation and target server, and MUST be captured in encrypted offsite backups (via Restic client-side encryption to Backblaze B2) to enable automated disaster recovery without storing secrets in git. Configuration templates MUST decouple secrets from environment definitions. Accidentally exposed cleartext credentials trigger immediate revocation, rotation, and git history cleanup.
 
-### III. Automated Verification & Acceptance Gates
-No service, configuration, or infrastructure component is complete without automated verification.
-Every deployment MUST define explicit health assertions, smoke tests, or status checks (e.g.,
-systemd unit active status, HTTP endpoint response, socket connectivity, mount accessibility).
-Automated tasks MUST verify that target states are live and functional before declaring completion,
-failing fast with actionable error messages on stderr. Early infrastructure phases prior to full
-network setup (e.g., Phase 1 live bootstrap and base OS installation) are EXEMPT from telemetry
-and observability verification gates; in these phases, verification is restricted to local health
-assertions (e.g., systemd unit active status, local log sinks, exit status). Once full network
-connectivity is operational (Phase 3 onward), telemetry and observability mechanisms (systemd unit
-monitoring, structured journal logging, metric endpoints, or healthcheck pingers) MUST be confirmed
-operational within each subsequent phase before declaring that phase complete. For Phase 5
-(application platform), each individual application MUST verify its health check assertion and
-telemetry integration before that application can be declared complete.
+### V. Centralized Dependencies, Protected Toolchain Gate & Disaster Recovery by Design
+- **Centralized, Locked Supply Chain**: All package versions, Ansible collections (`ansible/requirements.yml`), base OS packages (`ansible/inventory/group_vars/all/vars.yml`), container images, and shared compiler/linter settings (`.ansible-lint`, `.shellcheckrc`) MUST be declared centrally at the repository root with committed lockfiles or pinned digests. Project-local overrides are forbidden without documented justification. Internal shared code within the repository is consumed via project/module reference, never packaged internally.
+- **Deliberate Package Selection & Stability-First Cadence**: Prefer mature, actively maintained libraries and stable/LTS upstream releases that substantially simplify design over custom infrastructure code or bleeding-edge releases; reject obscure, poorly maintained, or trivial micro-packages. Day-to-day operations MUST require zero intervention, with major platform updates, kernel upgrades, and breaking architectural migrations planned on an annual maintenance cadence with rehearsed rollback plans.
+- **Human-Only Toolchain & Security Gate**: AI agents MUST NOT—without explicit human instruction—add or upgrade third-party packages, modify package sources or registries, alter SDK/toolchain versions, weaken compiler/linter warning or strictness flags, modify version manifests, or generate/modify cryptographic signing keys and certificates.
+- **Disaster Recovery & Backup by Design**: Every stateful service, configuration directory, and persistent dataset—as well as the host's gitignored secret configurations—MUST define an automated backup schedule and a verified restoration procedure targeting Backblaze B2 via Restic client-side encryption. Backup artifacts MUST be tested periodically for integrity; an untested backup MUST be considered non-existent. Disaster recovery procedures MUST allow recreating services on clean hardware or VMs using only the clean version-controlled repository, the 4 bootstrap master keys (B2 account ID/key, repository URL, Restic password), and the offsite backup store. Early infrastructure phases prior to full network setup (e.g., initial bootstrap and base OS installation prior to network configuration) are EXEMPT from backup and snapshot readiness verification gates. Once full network connectivity is operational (Phase 3 onward), each subsequent infrastructure phase MUST confirm its backup and snapshot readiness before completion. For Phase 5 (application platform), each individual application MUST confirm its backup strategy (e.g., automated transactional database dump, persistent volume snapshot, or documented exclusion policy) and its integration into the offsite Restic backup stream before that application can be declared complete. Phase 7 is reserved for migrating or adding a dedicated on-prem local backup server/repository alongside the offsite target.
 
-*Rationale: Silent failures and partial provisioning corrupt homelab reliability. Meaningful
-telemetry requires network connectivity, so early standalone bootstrap phases are exempt, but
-continuous telemetry verification is strictly enforced as soon as network access is established.*
+### VI. Bounded Resources & Verify-Before-Destroy
+- **Correctness Over Unmeasured Speed**: Absent a documented numeric performance target and benchmark in component documentation, code MUST NOT trade correctness, verification, or recoverability for speed.
+- **Bounded Untrusted Input & Minimalist Footprint**: Every allocation size, collection count, offset, loop bound, and recursion depth derived from untrusted or external input MUST be validated against an explicit ceiling before memory allocation or iteration (using overflow-safe arithmetic). Large files and payloads MUST be streamed in fixed-size chunks rather than buffered whole in memory. Network and IPC calls MUST enforce explicit timeouts and support cancellation. Host resource consumption is bounded by `systemd-oomd` and persistent journald storage limits (`2G`), and unnecessary background daemons or speculative abstractions are prohibited (YAGNI).
+- **Verify Before Mutate/Destroy**: Destructive or irreversible steps (disk/partition erase, storage formatting, state reset, schema drop, secret destruction, file overwrite) MUST execute only after all cheap checks, space/resource checks, and full input verifications have passed, and MUST be protected by explicit confirmation or opt-in verification guards (never executing silently or by default).
 
-### IV. Zero Secrets in Version Control & Isolated Configuration
-Sensitive parameters—including passwords, tokens, private keys, API credentials, and encryption
-keys—MUST NEVER be committed to version control, whether in plaintext or encrypted ciphertext form.
-Version control MUST only commit template example files (`*.example`). Real secrets MUST reside
-exclusively in gitignored files (e.g., `ansible/inventory/group_vars/all/vault.yml`, `*.env`) on the
-local workstation and target server, and MUST be captured in encrypted offsite backups (via Restic
-client-side encryption to Backblaze B2) to enable automated disaster recovery without storing secrets
-in git. Configuration templates MUST decouple secrets from environment definitions. Accidentally
-exposed cleartext credentials trigger immediate revocation, rotation, and git history cleanup.
-
-*Rationale: Public or private repositories must remain entirely free of secrets (both plaintext and
-encrypted blobs). Combining gitignored local files with client-side encrypted offsite backups guarantees
-security, eliminates repository friction, and preserves zero-toil disaster recovery.*
-
-### V. Disaster Recovery & Backup by Design
-Every stateful service, configuration directory, and persistent dataset—as well as the host's
-gitignored secret configurations—MUST define an automated backup schedule and a verified restoration
-procedure targeting Backblaze B2 via Restic client-side encryption. Backup artifacts MUST be tested
-periodically for integrity. An untested backup MUST be considered non-existent. Disaster recovery
-procedures MUST allow recreating services on clean hardware or VMs using only the clean version-controlled
-repository, the 4 bootstrap master keys (B2 account ID/key, repository URL, Restic password), and the
-offsite backup store. Early infrastructure phases prior to full network setup (e.g., initial bootstrap
-and base OS installation prior to network configuration) are EXEMPT from backup and snapshot readiness
-verification gates, as meaningful off-host or centralized backups require network access. Once full
-network connectivity is operational (Phase 3 onward), backup coverage and verification MUST NOT be
-deferred to an end-of-project milestone: each subsequent infrastructure phase MUST confirm its backup
-and snapshot readiness before completion. For Phase 5 (application platform), each individual application
-MUST confirm its backup strategy (e.g., automated transactional database dump, persistent volume snapshot,
-or documented exclusion policy) and its integration into the offsite Restic backup stream before that
-application can be declared complete. Phase 7 is reserved for migrating or adding a dedicated on-prem
-local backup server/repository alongside the offsite target.
-
-*Rationale: Hardware failures and configuration corruption are inevitable over time; requiring
-backup confirmation once network access is established eliminates blind spots without demanding
-impossible remote backup mechanics during early standalone bootstrap.*
-
-### VI. Modular & Decoupled Architecture
-System components, roles, and applications MUST remain modular, loosely coupled, and independently
-operable. Monolithic configurations and hidden inter-service dependencies MUST be avoided. Services
-MUST communicate over standardized protocols (e.g., TCP/IP, Unix sockets, REST) with clear network
-and storage boundaries. Individual services MUST be deployable, restartable, or decommissionable
-without impacting unrelated workloads.
-
-*Rationale: Modular components reduce blast radius, simplify debugging, and permit incremental
-evolution of individual homelab capabilities.*
-
-### VII. Stability-First & Annual Maintenance Cadence
-The platform prioritizes rock-solid stability, low operational toil, and minimal cognitive overhead
-over chasing bleeding-edge upstream releases. Deployments MUST default to stable/LTS releases,
-pinned versions, and battle-tested defaults. Day-to-day operations MUST require zero intervention.
-Major platform updates, kernel upgrades, and breaking architectural migrations MUST be planned on an
-annual maintenance cadence with rehearsed rollback plans.
-
-*Rationale: A homelab should serve the household quietly and reliably, not demand constant weekly
-tinkering or fragile maintenance chores.*
+### VII. Code Hygiene, Ubiquitous Language & Safe Logging
+- **Zero Warnings & Read-Only Vendored Code**: The build and validation pipeline treats warnings as errors, and all code/scripts/playbooks MUST pass configured linters (`ansible-lint`, `shellcheck`, `bash -n`). Vendored third-party code and generated schema files MUST NOT be edited or reformatted in place.
+- **Ubiquitous Language**: Code identifiers, UI screens, CLI tools, Ansible roles, and documentation share one domain vocabulary; changes MUST NOT introduce a synonym for an existing concept.
+- **Present-Tense, High-Signal Comments & Docs**: Comments MUST explain the current implementation and *why* it is built that way—never narrate git or session history. Comments SHOULD document rejected alternatives only when needed to stop a developer from reintroducing a known defect via a naive refactor. Internal architectural documentation and human-facing documentation (`README.md`, quickstarts, and user guides) MUST match actual implemented behavior and be updated in the same change whenever user-visible CLI commands, agent skills, public APIs, configuration options, or end-user workflows are added, removed, or modified; purely internal changes (`INTERNAL_ONLY` refactors, non-behavioral fixes, or internal tooling) are exempt from artificial `README.md` edits.
+- **Structured, Safe Logging**: Logs MUST use structured templates directed to standard sinks (`journald`/`stdout`/`stderr`) and strictly separate lifecycle milestones, diagnostic reasoning, recoverable boundary rejections, and fatal invariant crashes according to the severity taxonomy defined in `.specify/memory/logging-standards.md`. Logs and operator-visible errors MUST NEVER output secrets, private keys, credentials, raw PII, or bearer financial instruments.
+- **Structured Human-Facing Documentation Gate**: The repository root `README.md` (and dedicated operational guides under `docs/`) MUST maintain canonical sections covering Project Overview & Architecture, Getting Started / Bootstrap Quickstart, CLI / Skill / API Usage Reference, and Configuration & Governance Verification, verified for relative link integrity and command accuracy before merge.
 
 ## Operational & Security Standards
 
-- **Minimalist Footprint**: Unnecessary background daemons, complex container runtimes where
-  plain services suffice, and speculative abstractions are prohibited (YAGNI). Keep system footprint
-  lean and understandable.
-- **Structured Logging & Diagnostics**: Services and scripts MUST direct logs to standard sinks
-  (journald/stdout/stderr). Log outputs MUST provide sufficient context to triage failures without
-  attaching interactive debuggers.
-- **Network Isolation & Least Privilege**: Services MUST expose ports only to designated network
-  segments or overlay networks (e.g., Tailscale/VLANs). Non-root execution is required for all
-  application workloads.
+- **Minimalist Footprint**: Unnecessary background daemons, complex container runtimes where plain services suffice, and speculative abstractions are prohibited (YAGNI). Keep system footprint lean and understandable.
+- **Structured Logging & Diagnostics**: Services and scripts MUST direct logs to standard sinks (`journald`/`stdout`/`stderr`). Log outputs MUST provide sufficient context to triage failures without attaching interactive debuggers.
+- **Network Isolation & Least Privilege**: Services MUST expose ports only to designated network segments or overlay networks (e.g., loopback `127.0.0.1` behind Caddy or Tailscale/VLANs) behind the default-drop `nftables` firewall. Non-root execution is required for all application workloads.
 
-## Workflow & Quality Gates
+## Development Workflow & Quality Gates
 
-- **Spec Kit Lifecycle**: New infrastructure features, topology changes, and services MUST follow
-  the Spec Kit workflow (`spec.md` -> `plan.md` -> `tasks.md`) to guarantee constitutional compliance
-  before execution.
-- **Linting & Pre-flight Validation**: All scripts and configuration files MUST pass automated
-  linting (e.g., `ansible-lint`, `shellcheck`, syntax validation) before merging or running in
-  production.
-- **Continuous Backup & Telemetry Verification Gates**: Once full network connectivity and remote
-  access are established (Phase 3 onward), no infrastructure phase is complete until its backup
-  posture (snapshot coverage, restore verification) and telemetry integrations (health checks,
-  logging, metrics) are verified live. Early infrastructure bootstrap phases prior to full network
-  setup are exempt from backup and telemetry gates, requiring only local health checks and exit code
-  verification. In Phase 5 (application platform), this gate applies at per-application granularity:
-  each individual application MUST confirm both its backup and telemetry before being declared complete.
-- **Version Control & Documentation**: Every change MUST be committed with a descriptive git
-  commit message. Operational procedures and recovery steps MUST be documented alongside code.
+- **Spec Kit Pipeline & Ephemeral Specs**: Feature work follows the Spec Kit lifecycle (`spec.md` -> `plan.md` -> `tasks.md`). A feature spec is a transient proposal for one change, not permanent documentation. Before a feature's final pull request merges, all decisions, state contracts, and known gaps that outlive the feature MUST be promoted into permanent documentation (`docs/roadmap.md`, `docs/operations.md`, `ROADMAP.md`, or `reference/open-questions.md`), and that final pull request MUST delete the `specs/NNN-*/` folder (unless preserved under Recorded Deviations). Production code, comments, documentation, and commit messages outside `specs/` MUST NOT cite spec folders or `FR-XXX` identifiers.
+- **Pre-PR Verification**: `main` MUST always build and lint cleanly. Before opening a pull request or declaring convergence complete, the author or agent MUST run locked dependency restore, syntax validation, linters, and the automated acceptance verification suite locally or against the target host: **`bash -n scripts/*.sh && shellcheck scripts/*.sh && ansible-lint && ./scripts/verify-phase*.sh`**.
+- **Continuous Backup & Telemetry Verification Gates**: Once full network connectivity and remote access are established (Phase 3 onward), no infrastructure phase is complete until its backup posture (snapshot coverage, restore verification) and telemetry integrations (health checks, logging, metrics) are verified live. Early infrastructure bootstrap phases prior to full network setup are exempt from backup and telemetry gates, requiring only local health checks and exit code verification. In Phase 5 (application platform), this gate applies at per-application granularity: each individual application MUST confirm both its backup and telemetry before being declared complete.
+- **Review & Merge Authority**: Pull requests SHOULD remain under ~500 lines; larger changes should be split. Every change MUST be committed with a descriptive git commit message, and operational procedures and recovery steps MUST be documented alongside code. AI agents MUST NOT merge pull requests.
+
+## Recorded Deviations
+
+Any ratified exception to a Core Principle MUST be recorded here with: (1) Principle violated, (2) Ratifying human authority, (3) Rationale, (4) Compensating control, and (5) Known gap and documentation link.
+
+- **Deviation 001: Retention of Historical Phase Feature Specs (`specs/001-*` through `specs/011-*`)**
+  1. **Principle violated**: Development Workflow & Quality Gates (*Spec Kit Pipeline & Ephemeral Specs* — deletion of `specs/NNN-*/` upon feature completion).
+  2. **Ratifying human authority**: Repository Owner (`admin` / homelab2 operator).
+  3. **Rationale**: Historical specifications, verification contracts, and quickstart runbooks in `specs/001-*` through `specs/011-*` serve as audit records and active verification contract definitions for completed infrastructure phases (`Phase 1` through `Phase 8`).
+  4. **Compensating control**: Permanent operational documentation is maintained in `ROADMAP.md`, `docs/roadmap.md`, and `docs/operations.md`, while live acceptance scripts (`scripts/verify-phase*.sh`) enforce the runtime contracts independently of spec prose.
+  5. **Known gap and documentation link**: Historical specs remain in `specs/` until fully consolidated into permanent architecture docs; tracked in `ROADMAP.md` and `docs/roadmap.md`.
 
 ## Governance
 
-This Constitution acts as the supreme architectural standard for the `homelab2` repository.
-All specifications, designs, implementation tasks, and operational playbooks MUST comply with the
-Core Principles and Operational Standards defined herein.
+- **Document Hierarchy**: This constitution acts as the supreme architectural standard for the `homelab2` repository and supersedes all other repository practices. Detailed language and IaC conventions live in `.specify/memory/coding-standards.md`, logging and telemetry standards live in `.specify/memory/logging-standards.md`, as-built structural and phase records live in `ROADMAP.md` and `docs/roadmap.md`, and day-to-day operational runbooks live in `docs/operations.md`. Where a lower-level document conflicts with a Core Principle here, this constitution wins. Where `docs/roadmap.md` or `ROADMAP.md` conflicts with working, compliant code, update the documentation to match the code.
+- **Precedence Order**: When principles conflict, the earlier concern wins in this exact order:
+  1. Epistemic Truth, Trust Verification & Secret Safety (Principles I, IV, VII)
+  2. Fail Closed, Idempotency & Resource/Destructive Safety (Principles II, VI)
+  3. Architectural Boundaries, Single State & Concurrency (Principle IV)
+  4. Testing, Live Acceptance, Backup/Telemetry & Supply-Chain/Toolchain Gates (Principles III, V)
+  5. Code Hygiene & Style (Principle VII)
+  6. Unbenchmarked Performance (Principle VI)
+  Degrading a higher-ranked concern to serve a lower-ranked one requires human owner ratification and an entry under **Recorded Deviations**.
+- **Amendment & Versioning**: Amendments require explicit human approval, a documented proposal explaining the underlying need, an evaluation of impact on existing infrastructure, and a Semantic Version bump (`MAJOR` for backward-incompatible principle removals/redefinitions or major structural governance migrations; `MINOR` for new principles or materially expanded operational gates; `PATCH` for wording refinements and clarifications). Only the most recent amendment summary is kept in the top HTML sync comment.
 
-- **Amendment Process**: Any modification to this constitution requires a documented proposal,
-  an explanation of the underlying need, an evaluation of impact on existing infrastructure, and a
-  formal version bump.
-- **Versioning Policy**: Semantic versioning (MAJOR.MINOR.PATCH) is strictly applied:
-  - MAJOR: Incompatible governance changes, fundamental architectural shifts, or principle removals.
-  - MINOR: Addition of new principles, structural sections, or materially expanded operational gates.
-  - PATCH: Wording refinements, clarifications, and non-semantic corrections.
-- **Compliance Enforcement**: All Spec Kit artifacts (`spec.md`, `plan.md`, `tasks.md`) and code
-  reviews MUST explicitly reference and verify adherence to these principles prior to implementation.
-
-**Version**: 1.3.0 | **Ratified**: 2026-10-11 | **Last Amended**: 2026-11-02
+**Version**: 2.0.0 | **Ratified**: 2026-10-11 | **Last Amended**: 2026-11-05

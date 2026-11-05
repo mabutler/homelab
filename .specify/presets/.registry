@@ -1,0 +1,8 @@
+{
+  "presets": {
+    "base-governance": {
+      "priority": 10,
+      "enabled": true
+    }
+  }
+}

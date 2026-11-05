@@ -85,25 +85,25 @@ of the code relative to the feature's artifacts — no git, no branch comparison
 When the codebase already satisfies everything, the command MUST leave `tasks.md`
 **byte-for-byte unchanged** (no empty Convergence header) and report a clean result.
 
-**Constitution Authority**: The project constitution (`.specify/memory/constitution.md`) is
-**non-negotiable**. Code that violates a MUST principle is the highest-severity finding and
-produces a corresponding remediation task. If the constitution is an unfilled template,
-skip constitution checks gracefully rather than failing.
+**Constitution Authority**: The project constitution (`.specify/memory/constitution.md`) along with its linked companion standards (`.specify/memory/coding-standards.md` and `.specify/memory/logging-standards.md`, when present and populated) is **non-negotiable**. Code that violates a MUST principle or standard is the highest-severity finding and produces a corresponding remediation task. If a governance file is absent or an unfilled template, skip its checks gracefully rather than failing.
 
 ## Execution Steps
 
 ### 1. Initialize Convergence Context
 
-Run `.specify/scripts/powershell/check-prerequisites.ps1 -Json -RequireSpec -RequireTasks -IncludeTasks` once from repo root and parse JSON for FEATURE_DIR and AVAILABLE_DOCS. Derive absolute paths:
-
-- SPEC = FEATURE_DIR/spec.md
-- PLAN = FEATURE_DIR/plan.md
-- TASKS = FEATURE_DIR/tasks.md
-- CONSTITUTION = `.specify/memory/constitution.md` (if present)
+Discover `FeatureContext` and active feature paths natively:
+- Check environment variable `SPECIFY_FEATURE_DIRECTORY` or read `.specify/feature.json` for `feature_directory`.
+- Derive absolute paths:
+  - SPEC = FEATURE_DIR/spec.md
+  - PLAN = FEATURE_DIR/plan.md
+  - TASKS = FEATURE_DIR/tasks.md
+  - CONSTITUTION = `.specify/memory/constitution.md` (if present)
+  - CODING_STANDARDS = `.specify/memory/coding-standards.md` (if present)
+  - LOGGING_STANDARDS = `.specify/memory/logging-standards.md` (if present)
+- Scan `AVAILABLE_DOCS` list under `FEATURE_DIR` (e.g. `research.md`, `data-model.md`, `contracts/`, `quickstart.md`).
 If `spec.md`, `plan.md`, or `tasks.md` is missing, STOP with a clear, actionable message naming the
 prerequisite command to run (`/speckit-specify` for a missing spec, `/speckit-plan` for a missing plan,
 `/speckit-tasks` for missing tasks). Do not produce partial output.
-For single quotes in args like "I'm Groot", use escape syntax: e.g 'I'\''m Groot' (or double-quote if possible: "I'm Groot").
 
 ### 2. Load Artifacts (Progressive Disclosure)
 
@@ -129,21 +129,22 @@ Load only the minimal necessary context from each artifact:
 - Task IDs (to compute the next ID and next phase number)
 - Descriptions, phase grouping, and referenced file paths
 
-**From constitution (if not an unfilled template):**
+**From constitution and companion standards (if not unfilled templates):**
 
-- Principle names and MUST/SHOULD normative statements
+- Principle names and MUST/SHOULD normative statements from `constitution.md`, `coding-standards.md`, and `logging-standards.md` (skipping any file that is absent or an unfilled template)
 
 ### 3. Build the Intent Inventory
 
 Create an internal model (do not echo raw artifacts):
 
 - **Requirements inventory**: one stable key per FR-### / SC-### / user-story acceptance
-  scenario (e.g. `US1/AC2`), plus the plan decisions and constitution principles that
+  scenario (e.g. `US1/AC2`), plus buildable obligations from `constitution.md`, `coding-standards.md`, and `logging-standards.md` as well as plan decisions that
   impose buildable obligations.
 - **Code-scope map**: from the file paths named in `plan.md` and `tasks.md`, plus a keyword
   search for the concepts each requirement describes, derive the set of source files and
   components in scope for assessment. Bound the assessment to these — do **not** infer
   scope beyond what the artifacts define.
+- **Documentation obligations**: Include `Documentation Impact` (`USER_FACING` target files vs. `INTERNAL_ONLY` exemption) and Principle VII human-facing documentation obligations in the intent inventory.
 
 ### 4. Assess the Codebase and Classify Findings
 
@@ -152,6 +153,8 @@ Convergence phase: completion claims are not evidence. Verify current behavior a
 the spec, plan, tasks, and constitution; for corrective task chains, assess the resulting
 behavior, not superseded implementation details. Check both unmet obligations and
 implementation that contradicts, exceeds, or falls outside the stated intent.
+
+When `Documentation Impact` is `USER_FACING`, inspect target human-facing documentation files (`README.md`, user guides) on disk and emit a `Finding` (`missing`, `partial`, or `contradicts`) if required documentation updates are absent, out of sync with implemented behavior, have broken relative links, or reference ephemeral `specs/NNN-*/` paths or `FR-XXX`/`SC-XXX` identifiers. When `INTERNAL_ONLY` (and consistent with `spec.md`), require zero `README.md` edits and emit no false-positive documentation gap findings.
 
 For each item in the intent inventory, inspect the current code in scope and produce a
 `Finding` only where there is a gap. Classify every finding by **gap type**:

@@ -1,0 +1,8 @@
+{
+  "extensions": {
+    "speckit-orchestrator": {
+      "priority": 10,
+      "enabled": true
+    }
+  }
+}

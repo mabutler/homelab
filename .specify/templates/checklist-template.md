@@ -9,6 +9,17 @@
 **Marker Semantics**: `[x]` means the criterion has been reviewed and satisfied for requirements quality. It does not mean implementation work is complete.
 
 <!--
+Template Resolution Hierarchy Specification:
+This template is resolved by agent skills using the native 4-tier template resolution hierarchy:
+- Tier 1 (Overrides): .specify/templates/overrides/checklist-template.md
+- Tier 2 (Presets): .specify/presets/<preset-id>/templates/checklist-template.md (evaluated per .specify/presets/.registry sorted ascending by priority; strategy: replace, prepend, append, wrap)
+- Tier 3 (Extensions): .specify/extensions/<ext-id>/templates/checklist-template.md (evaluated per .specify/extensions/.registry sorted ascending by priority)
+- Tier 4 (Core Fallback): .specify/templates/checklist-template.md
+
+Invariant: If a requested template is not found in any of the 4 tiers, the agent MUST fail closed and emit an error per Principle II.
+-->
+
+<!--
   ============================================================================
   IMPORTANT: The checklist items below are SAMPLE ITEMS for illustration only.
 

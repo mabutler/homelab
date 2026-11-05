@@ -38,3 +38,6 @@ ansible/inventory/group_vars/all/vault.yml
 # Python cache
 __pycache__/
 *.pyc
+
+# Spec Kit local agent profiles
+.agents/agents/*.local.md

@@ -60,12 +60,11 @@ Note: This clarification workflow is expected to run (and be completed) BEFORE i
 
 Execution steps:
 
-1. Run `.specify/scripts/powershell/check-prerequisites.ps1 -Json -PathsOnly` from repo root **once** (combined `--json --paths-only` mode / `-Json -PathsOnly`). Parse minimal JSON payload fields:
-   - `FEATURE_DIR`
-   - `FEATURE_SPEC`
-   - (Optionally capture `IMPL_PLAN`, `TASKS` for future chained flows.)
-   - If JSON parsing fails, abort and instruct user to re-run `/speckit-specify` or verify feature branch environment.
-   - For single quotes in args like "I'm Groot", use escape syntax: e.g 'I'\''m Groot' (or double-quote if possible: "I'm Groot").
+1. Discover `FeatureContext` and active feature paths natively:
+   - Check environment variable `SPECIFY_FEATURE_DIRECTORY` or read `.specify/feature.json` for `feature_directory`.
+   - Derive absolute paths: `FEATURE_DIR`, `FEATURE_SPEC` (`${FEATURE_DIR}/spec.md`), and optionally `IMPL_PLAN` (`${FEATURE_DIR}/plan.md`), `TASKS` (`${FEATURE_DIR}/tasks.md`).
+   - Validate prerequisite: `feature_directory` MUST NOT be empty and `${FEATURE_DIR}/spec.md` MUST exist on disk.
+   - If missing or unreadable, abort with a typed diagnostic instructing the user to run `/speckit-specify`.
 
 2. **IF EXISTS**: Load `.specify/memory/constitution.md` for project principles and governance constraints.
 
