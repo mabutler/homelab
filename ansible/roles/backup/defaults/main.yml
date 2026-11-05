@@ -20,6 +20,7 @@ backup_include_paths:
   - "/etc/homelab/monitoring/checks-catalog.json"
   - "/opt/services"
   - "/var/lib/homelab/monitoring/checks.json"
+  - "/home/admin/projects"
 
 backup_exclude_patterns:
   - "/opt/services/*/data/*.sqlite3"
@@ -36,6 +37,15 @@ backup_exclude_patterns:
   - "/opt/services/frigate/config/model_cache"
   - "/mnt/scratch"
   - "/mnt/scratch/**"
+  - "node_modules"
+  - ".venv"
+  - "venv"
+  - "__pycache__"
+  - "*.pyc"
+  - ".pytest_cache"
+  - ".mypy_cache"
+  - ".ruff_cache"
+  - ".tox"
 
 
 # Retention policy
