@@ -102,6 +102,24 @@ flowchart TD
     Layer3 --> Layer4
 ```
 
+### 2.1 Declarative Architecture & System Inventory Map
+
+To eliminate configuration ambiguity, prevent cognitive toil, and ensure human operators and autonomous agents can rapidly locate and modify system state with minimal overhead, the codebase maintains explicit single sources of truth across well-defined inventory boundaries:
+
+| Inventory Domain | Primary Location & Source of Truth | Key Data Elements & Managed Resources | Convergence & Application |
+|---|---|---|---|
+| **Base Software Inventory** | [`ansible/inventory/group_vars/all/vars.yml`](file:///C:/Users/micro/projects/homelab2/ansible/inventory/group_vars/all/vars.yml) (`common_packages`) | Core administration CLI utilities (`vim`, `tmux`, `htop`, `git`, `curl`, `jq`, `uv`). | `ansible-playbook -i inventory/hosts.yml playbooks/site.yml --tags packages` |
+| **Host & Network Inventory** | [`ansible/inventory/hosts.yml`](file:///C:/Users/micro/projects/homelab2/ansible/inventory/hosts.yml) | Target host IP/hostname (`192.168.4.57`), admin user, Python interpreter, host groups (`homelab_nodes`, `arch_linux`). | `ansible-playbook -i inventory/hosts.yml playbooks/site.yml` |
+| **Storage & Drive Topology** | [`ansible/inventory/host_vars/homelab2/storage.yml`](file:///C:/Users/micro/projects/homelab2/ansible/inventory/host_vars/homelab2/storage.yml) | Physical drive UUIDs, filesystems (`ext4`), mount paths (`/mnt/disks/data*`, `/mnt/scratch`), pool roles (`data`, `parity`, `scratch`). | `ansible-playbook -i inventory/hosts.yml playbooks/storage.yml` |
+| **Secrets & Credential Inventory** | [`ansible/inventory/group_vars/all/vault.yml`](file:///C:/Users/micro/projects/homelab2/ansible/inventory/group_vars/all/vault.yml) (and `.sops.yml`) | Tailscale auth keys, Vaultwarden token hashes, Backblaze B2 application keys, Restic encryption passphrases. | Gitignored; decrypted via SOPS / Age keys during orchestration. |
+| **Platform Safeguards & Policies** | [`ansible/inventory/group_vars/all/vars.yml`](file:///C:/Users/micro/projects/homelab2/ansible/inventory/group_vars/all/vars.yml) | SSH hardening ciphers, Fail2ban rules, `systemd-oomd` pressure thresholds, journald bounds, Chrony NTP pools. | `ansible-playbook -i inventory/hosts.yml playbooks/harden.yml` |
+| **Container & Application Stacks** | `/opt/services/<app>/docker-compose.yml` & [`ansible/roles/<app>`](file:///C:/Users/micro/projects/homelab2/ansible/roles/) | Container manifests, persistent NVMe volumes, internal loopback ports, environment isolation. | `ansible-playbook -i inventory/hosts.yml playbooks/<app>.yml` |
+| **Backup Hook Inventory** | `/etc/homelab/backup.d/*.sh` & [`ansible/roles/backup`](file:///C:/Users/micro/projects/homelab2/ansible/roles/backup/) | Transactional app snapshot scripts (`10-vaultwarden.sh`), Restic backup paths, retention pruning rules. | `ansible-playbook -i inventory/hosts.yml playbooks/backup.yml` |
+
+> [!TIP]
+> **Operator & Agent Navigation Standard**:
+> When modifying host packages, storage layouts, or system parameters, always refer directly to the corresponding inventory file above rather than performing broad codebase searches.
+
 ---
 
 ## 3. End-to-End Operational Lifecycle

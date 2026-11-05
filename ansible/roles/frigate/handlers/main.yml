@@ -1,0 +1,14 @@
+---
+- name: Reload systemd
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: Restart frigate
+  ansible.builtin.systemd:
+    name: frigate
+    state: restarted
+
+- name: Reload frigate
+  ansible.builtin.systemd:
+    name: frigate
+    state: reloaded

@@ -1,0 +1,50 @@
+---
+# Directory layout and storage tier assertions for Frigate NVR
+
+- name: Assert /mnt/scratch is not part of MergerFS pool branches
+  # noqa: risky-shell-pipe
+  ansible.builtin.shell:
+    cmd: |
+      set -o pipefail
+      ! grep -E 'fuse\.mergerfs' /etc/fstab | grep -q '/mnt/scratch'
+  changed_when: false
+
+- name: Ensure Frigate Tier 0 root service directory exists
+  ansible.builtin.file:
+    path: "{{ frigate_app_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Ensure Frigate Tier 0 config directory exists
+  ansible.builtin.file:
+    path: "{{ frigate_config_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Ensure Frigate Tier 0 backup staging directory exists
+  ansible.builtin.file:
+    path: "{{ frigate_backups_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0750"
+
+- name: Ensure Frigate Tier 2 scratch root directory exists
+  ansible.builtin.file:
+    path: "{{ frigate_scratch_root }}"
+    state: directory
+    owner: root
+    group: "{{ storage_group | default('storage') }}"
+    mode: "2775"
+
+- name: Ensure Frigate Tier 2 media directory exists with storage group and setgid mode
+  ansible.builtin.file:
+    path: "{{ frigate_media_dir }}"
+    state: directory
+    owner: root
+    group: "{{ storage_group | default('storage') }}"
+    mode: "2775"

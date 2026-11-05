@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# /etc/homelab/backup.d/20-frigate.sh - Frigate backup integration hook
+# Managed by Ansible - homelab2
+# Contract: APP-BACKUP-V1 / FRIGATE-BACKUP-V1
+set -euo pipefail
+
+# shellcheck disable=SC2034
+APP_NAME="frigate"
+SERVICE_DIR="{{ frigate_app_dir | default('/opt/services/frigate') }}"
+CONFIG_DIR="{{ frigate_config_dir | default('/opt/services/frigate/config') }}"
+BACKUP_DIR="{{ frigate_backups_dir | default('/opt/services/frigate/backups') }}"
+SNAPSHOT_PATH="$BACKUP_DIR/snapshot.sqlite3"
+
+ACTION="${1:-pre-backup}"
+
+case "$ACTION" in
+    pre-backup)
+        mkdir -p "$BACKUP_DIR"
+        chmod 0750 "$BACKUP_DIR"
+
+        if [ ! -f "$CONFIG_DIR/frigate.db" ]; then
+            echo "WARN: $APP_NAME database not found at $CONFIG_DIR/frigate.db. Skipping dump." >&2
+            exit 0
+        fi
+
+        rm -f "$SNAPSHOT_PATH"
+        if ! sqlite3 "$CONFIG_DIR/frigate.db" "VACUUM INTO '$SNAPSHOT_PATH'"; then
+            echo "ERROR: sqlite3 VACUUM INTO failed for $APP_NAME" >&2
+            exit 1
+        fi
+
+        INTEGRITY=$(sqlite3 "$SNAPSHOT_PATH" "PRAGMA integrity_check;")
+        if [ "$INTEGRITY" != "ok" ]; then
+            echo "ERROR: $APP_NAME snapshot integrity check failed: $INTEGRITY" >&2
+            rm -f "$SNAPSHOT_PATH"
+            exit 1
+        fi
+
+        chmod 0640 "$SNAPSHOT_PATH"
+        echo "$APP_NAME transactional pre-backup snapshot verified ok."
+        ;;
+
+    post-restore)
+        if [ -f "$SNAPSHOT_PATH" ] && [ ! -f "$CONFIG_DIR/frigate.db" ]; then
+            mkdir -p "$CONFIG_DIR"
+            cp "$SNAPSHOT_PATH" "$CONFIG_DIR/frigate.db"
+            echo "Restored $APP_NAME frigate.db from snapshot."
+        fi
+
+        if [ -f "$SERVICE_DIR/.env" ]; then
+            chmod 0600 "$SERVICE_DIR/.env"
+        fi
+        if [ -d "$CONFIG_DIR" ]; then
+            chmod 0755 "$CONFIG_DIR"
+        fi
+        echo "$APP_NAME post-restore verification completed."
+        ;;
+
+    *)
+        echo "Usage: $0 {pre-backup|post-restore}" >&2
+        exit 1
+        ;;
+esac

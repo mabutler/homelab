@@ -1,0 +1,38 @@
+---
+# Preflight checks for Frigate NVR deployment
+
+- name: Check Intel UHD Graphics 770 iGPU render device
+  ansible.builtin.stat:
+    path: "{{ frigate_igpu_render_device }}"
+    follow: true
+  register: frigate_igpu_render_stat
+
+- name: Check Intel UHD Graphics 770 iGPU card device
+  ansible.builtin.stat:
+    path: "{{ frigate_igpu_card_device }}"
+    follow: true
+  register: frigate_igpu_card_stat
+
+- name: Assert Intel UHD Graphics 770 iGPU devices exist
+  ansible.builtin.assert:
+    that:
+      - frigate_igpu_render_stat.stat.exists
+      - frigate_igpu_render_stat.stat.ischr
+      - frigate_igpu_card_stat.stat.exists
+      - frigate_igpu_card_stat.stat.ischr
+    fail_msg: >
+      Intel UHD Graphics 770 iGPU device paths ({{ frigate_igpu_render_device }} or
+      {{ frigate_igpu_card_device }}) do not exist or are not character devices.
+    success_msg: "Intel UHD Graphics 770 iGPU devices verified."
+
+- name: Check /mnt/scratch mount status
+  ansible.builtin.command: mountpoint -q /mnt/scratch
+  changed_when: false
+  register: frigate_scratch_mount
+
+- name: Assert /mnt/scratch is a valid active mountpoint
+  ansible.builtin.assert:
+    that:
+      - frigate_scratch_mount.rc == 0
+    fail_msg: "/mnt/scratch is not an active mountpoint. Ensure /mnt/scratch (/dev/sdb) is mounted before deploying Frigate."
+    success_msg: "/mnt/scratch is an active mountpoint."

@@ -8,7 +8,6 @@
     owner: root
     group: root
     mode: "0755"
-
 - name: Deploy standalone disaster recovery script
   ansible.builtin.copy:
     src: restore-from-b2.sh
@@ -16,4 +15,3 @@
     owner: root
     group: root
     mode: "0755"
-
