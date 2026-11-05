@@ -1,0 +1,114 @@
+#!/usr/bin/env bash
+# /usr/local/bin/homelab-unit-alert
+# Diagnostic collector triggered on systemd OnFailure events
+# Conforms to MON-NTFY-V1 contract
+
+set -euo pipefail
+
+SCOPE="system"
+USER_NAME=""
+UNIT=""
+
+usage() {
+    cat <<EOF
+Usage: $0 --scope <system|user> [--user <username>] --unit <unit-name>
+
+Options:
+  --scope <system|user>   Systemd manager scope (default: system)
+  --user <username>       Target username (required if scope is user)
+  --unit <unit-name>      Failed unit name (required)
+  -h, --help              Show this help message
+EOF
+    exit 1
+}
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --scope)
+            SCOPE="$2"
+            shift 2
+            ;;
+        --user)
+            USER_NAME="$2"
+            shift 2
+            ;;
+        --unit)
+            UNIT="$2"
+            shift 2
+            ;;
+        -h|--help)
+            usage
+            ;;
+        *)
+            echo "Unknown argument: $1" >&2
+            usage
+            ;;
+    esac
+done
+
+if [[ -z "$UNIT" ]]; then
+    echo "ERROR: --unit is required." >&2
+    exit 1
+fi
+
+# Safeguard: Prevent recursion on failure alert dispatcher itself
+if [[ "$UNIT" =~ ^homelab-alert@ ]]; then
+    echo "Notice: Skipping failure alert for alert dispatcher unit: $UNIT" >&2
+    exit 0
+fi
+
+ACTIVE_STATE="unknown"
+SUB_STATE="unknown"
+RESULT="unknown"
+EXEC_STATUS="unknown"
+JOURNAL_EXCERPT=""
+
+if [[ "$SCOPE" == "user" ]]; then
+    TARGET_USER="${USER_NAME:-admin}"
+    # Query user systemd unit state
+    ACTIVE_STATE=$(systemctl --machine="${TARGET_USER}@.host" --user show "$UNIT" -p ActiveState --value 2>/dev/null || echo "unknown")
+    SUB_STATE=$(systemctl --machine="${TARGET_USER}@.host" --user show "$UNIT" -p SubState --value 2>/dev/null || echo "unknown")
+    RESULT=$(systemctl --machine="${TARGET_USER}@.host" --user show "$UNIT" -p Result --value 2>/dev/null || echo "unknown")
+    EXEC_STATUS=$(systemctl --machine="${TARGET_USER}@.host" --user show "$UNIT" -p ExecMainStatus --value 2>/dev/null || echo "unknown")
+
+    # Fetch recent journal lines
+    JOURNAL_EXCERPT=$(journalctl --user -u "$UNIT" -n 20 --no-pager 2>/dev/null || journalctl -u "$UNIT" -n 20 --no-pager 2>/dev/null || echo "No journal logs available.")
+else
+    # Query system systemd unit state
+    ACTIVE_STATE=$(systemctl show "$UNIT" -p ActiveState --value 2>/dev/null || echo "unknown")
+    SUB_STATE=$(systemctl show "$UNIT" -p SubState --value 2>/dev/null || echo "unknown")
+    RESULT=$(systemctl show "$UNIT" -p Result --value 2>/dev/null || echo "unknown")
+    EXEC_STATUS=$(systemctl show "$UNIT" -p ExecMainStatus --value 2>/dev/null || echo "unknown")
+
+    # Fetch recent journal lines
+    JOURNAL_EXCERPT=$(journalctl -u "$UNIT" -n 20 --no-pager 2>/dev/null || echo "No journal logs available.")
+fi
+
+DIAGNOSTIC_PAYLOAD=$(cat <<EOF
+Unit: ${UNIT}
+Scope: ${SCOPE}
+State: ${ACTIVE_STATE} (${SUB_STATE})
+Result: ${RESULT}
+ExitCode: ${EXEC_STATUS}
+
+Recent Journal Logs:
+${JOURNAL_EXCERPT}
+EOF
+)
+
+COMPONENT_KEY="unit-${SCOPE}-${UNIT}"
+TITLE="[FAILURE] fidelacchius: ${UNIT} (${SCOPE})"
+
+# Forward to homelab-ntfy
+if [[ -x /usr/local/bin/homelab-ntfy ]]; then
+    /usr/local/bin/homelab-ntfy \
+        --component "$COMPONENT_KEY" \
+        --status failing \
+        --priority high \
+        --tags "rotating_light,systemd" \
+        --title "$TITLE" \
+        --message "$DIAGNOSTIC_PAYLOAD"
+else
+    echo "ERROR: /usr/local/bin/homelab-ntfy not found or not executable" >&2
+    exit 1
+fi

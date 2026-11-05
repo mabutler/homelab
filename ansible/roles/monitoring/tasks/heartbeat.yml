@@ -1,0 +1,44 @@
+---
+# Composite health sweep and heartbeat timer tasks
+
+- name: Deploy composite health sweep script
+  ansible.builtin.template:
+    src: "homelab-health-sweep.j2"
+    dest: "/usr/local/bin/homelab-health-sweep"
+    owner: "root"
+    group: "root"
+    mode: "0755"
+
+- name: Deploy composite heartbeat service unit
+  ansible.builtin.template:
+    src: "homelab-heartbeat.service.j2"
+    dest: "/etc/systemd/system/homelab-heartbeat.service"
+    owner: "root"
+    group: "root"
+    mode: "0644"
+  notify:
+    - Reload systemd system manager
+
+- name: Deploy composite heartbeat timer unit
+  ansible.builtin.template:
+    src: "homelab-heartbeat.timer.j2"
+    dest: "/etc/systemd/system/homelab-heartbeat.timer"
+    owner: "root"
+    group: "root"
+    mode: "0644"
+  notify:
+    - Reload systemd system manager
+
+- name: Flush handlers to reload systemd
+  ansible.builtin.meta: flush_handlers
+
+- name: Enable and start homelab-heartbeat timer
+  ansible.builtin.systemd:
+    name: homelab-heartbeat.timer
+    enabled: true
+    state: started
+
+- name: Execute initial health sweep
+  ansible.builtin.command:
+    cmd: "/usr/local/bin/homelab-health-sweep"
+  changed_when: false

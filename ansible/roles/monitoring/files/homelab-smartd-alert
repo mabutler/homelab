@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# /usr/local/bin/homelab-smartd-alert
+# SMART disk failure and threshold breach alert hook invoked by smartd
+# Conforms to MON-SWEEP-V1 contract
+
+set -euo pipefail
+
+DEV="${SMARTD_DEVICE:-unknown-disk}"
+FAILTYPE="${SMARTD_FAILTYPE:-UnknownFailure}"
+MSG="${SMARTD_MESSAGE:-SMART alert detected}"
+FULLMSG="${SMARTD_FULLMESSAGE:-$MSG}"
+
+SAFE_DEV=$(printf '%s' "$DEV" | tr -c 'a-zA-Z0-9._-' '_')
+COMPONENT="smartd-${SAFE_DEV}-${FAILTYPE}"
+TITLE="[SMART ALERT] fidelacchius: ${DEV} (${FAILTYPE})"
+
+if [[ "$FAILTYPE" == "EmailTest" ]]; then
+    STATUS="test"
+    PRIORITY="default"
+    TAGS="cd,test"
+else
+    STATUS="failing"
+    PRIORITY="urgent"
+    TAGS="rotating_light,cd"
+fi
+
+if [[ -x /usr/local/bin/homelab-ntfy ]]; then
+    /usr/local/bin/homelab-ntfy \
+        --component "$COMPONENT" \
+        --status "$STATUS" \
+        --priority "$PRIORITY" \
+        --tags "$TAGS" \
+        --title "$TITLE" \
+        --message "$FULLMSG"
+else
+    echo "ERROR: /usr/local/bin/homelab-ntfy not found or not executable" >&2
+    exit 1
+fi

@@ -1,0 +1,146 @@
+---
+# Defaults for role: monitoring
+
+# Paths and Permissions
+monitoring_config_dir: "/etc/homelab/monitoring"
+monitoring_env_path: "/etc/homelab/monitoring.env"
+monitoring_env_example_path: "/etc/homelab/monitoring.env.example"
+monitoring_state_dir: "/var/lib/homelab/monitoring/state"
+monitoring_data_dir: "/var/lib/homelab/monitoring"
+monitoring_checks_file: "/var/lib/homelab/monitoring/checks.json"
+monitoring_catalog_file: "/etc/homelab/monitoring/checks-catalog.json"
+
+# Credential mappings from vault
+monitoring_ntfy_server_url: "{{ vault_ntfy_server_url | default('https://ntfy.sh') }}"
+monitoring_ntfy_topic: "{{ vault_ntfy_topic | default('') }}"
+monitoring_ntfy_token: "{{ vault_ntfy_token | default('') }}"
+monitoring_healthchecks_api_url: "{{ vault_healthchecks_api_url | default('https://healthchecks.io/api/v3') }}"
+monitoring_healthchecks_ping_url: "{{ vault_healthchecks_ping_url | default('https://hc-ping.com') }}"
+monitoring_healthchecks_api_key: "{{ vault_healthchecks_api_key | default('') }}"
+monitoring_healthchecks_ping_key: "{{ vault_healthchecks_ping_key | default('') }}"
+
+# Alerting and Thresholds
+monitoring_cooldown_sec: 900
+monitoring_disk_warn_pct: 85
+monitoring_disk_crit_pct: 95
+
+# Monitored Units
+monitoring_required_system_services:
+  - "sshd.service"
+  - "chronyd.service"
+  - "smartd.service"
+  - "systemd-oomd.service"
+  - "nftables.service"
+  - "tailscaled.service"
+  - "caddy.service"
+  - "docker.service"
+  - "vaultwarden.service"
+  - "frigate.service"
+
+monitoring_required_user_services:
+  - name: "agy-remote-control.service"
+    user: "admin"
+    condition_file: "/home/admin/.gemini/oauth_creds.json"
+
+# Storage Mounts
+monitoring_monitored_mounts:
+  - "/"
+  - "/opt/services"
+  - "/mnt/storage"
+  - "/mnt/disks/data1"
+  - "/mnt/disks/data2"
+  - "/mnt/disks/parity1"
+  - "/mnt/scratch"
+
+# HTTP and Overlay Probes
+monitoring_http_probes:
+  - name: "caddy-health"
+    url: "http://127.0.0.1:80/health"
+    expected_status: 200
+  - name: "vaultwarden-alive"
+    url: "http://127.0.0.1:8088/alive"
+    expected_status: 200
+  - name: "frigate-api"
+    url: "http://127.0.0.1:5000/api/version"
+    expected_status: 200
+
+# Canonical Healthchecks Catalog
+monitoring_healthchecks_catalog:
+  - name: "fidelacchius: Host & Platform Composite Heartbeat"
+    slug: "fidelacchius-host-heartbeat"
+    tags: "fidelacchius homelab liveness composite"
+    desc: "Composite host health sweep and heartbeat timer (homelab-heartbeat.service)"
+    timeout: 300
+    grace: 600
+    channels: "*"
+    unique:
+      - "name"
+      - "slug"
+  - name: "fidelacchius: Restic Offsite Daily Backup"
+    slug: "fidelacchius-backup-daily"
+    tags: "fidelacchius homelab backup restic b2"
+    desc: "Daily Restic encrypted backup to Backblaze B2 (homelab-backup.service)"
+    schedule: "30 2 * * *"
+    tz: "America/New_York"
+    grace: 3600
+    channels: "*"
+    unique:
+      - "name"
+      - "slug"
+  - name: "fidelacchius: Restic Weekly Repository Integrity Check"
+    slug: "fidelacchius-backup-check"
+    tags: "fidelacchius homelab backup restic integrity"
+    desc: "Weekly Restic repository check and prune (homelab-backup-check.service)"
+    schedule: "0 4 * * 0"
+    tz: "America/New_York"
+    grace: 7200
+    channels: "*"
+    unique:
+      - "name"
+      - "slug"
+  - name: "fidelacchius: Vaultwarden Daily SQLite Backup"
+    slug: "fidelacchius-vaultwarden-backup"
+    tags: "fidelacchius homelab backup vaultwarden"
+    desc: "Daily SQLite backup for Vaultwarden password manager (vaultwarden-backup.service)"
+    schedule: "30 3 * * *"
+    tz: "America/New_York"
+    grace: 1800
+    channels: "*"
+    unique:
+      - "name"
+      - "slug"
+  - name: "fidelacchius: SnapRAID Daily Parity Sync"
+    slug: "fidelacchius-snapraid-sync"
+    tags: "fidelacchius homelab storage snapraid sync"
+    desc: "Daily SnapRAID array sync and parity calculation (snapraid-sync.service)"
+    schedule: "0 3 * * *"
+    tz: "America/New_York"
+    grace: 7200
+    channels: "*"
+    unique:
+      - "name"
+      - "slug"
+  - name: "fidelacchius: SnapRAID Weekly Parity Scrub"
+    slug: "fidelacchius-snapraid-scrub"
+    tags: "fidelacchius homelab storage snapraid scrub"
+    desc: "Weekly SnapRAID array scrub (snapraid-scrub.service)"
+    schedule: "0 4 * * 0"
+    tz: "America/New_York"
+    grace: 14400
+    channels: "*"
+    unique:
+      - "name"
+      - "slug"
+
+# Scheduled Maintenance Services to instrument
+monitoring_maintenance_services:
+  - unit: "homelab-backup.service"
+    slug: "fidelacchius-backup-daily"
+  - unit: "homelab-backup-check.service"
+    slug: "fidelacchius-backup-check"
+  - unit: "vaultwarden-backup.service"
+    slug: "fidelacchius-vaultwarden-backup"
+  - unit: "snapraid-sync.service"
+    slug: "fidelacchius-snapraid-sync"
+  - unit: "snapraid-scrub.service"
+    slug: "fidelacchius-snapraid-scrub"

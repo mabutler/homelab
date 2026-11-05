@@ -1,0 +1,20 @@
+---
+# Role orchestrator for monitoring
+
+- name: Execute preflight secret and environment assertions
+  ansible.builtin.import_tasks: preflight.yml
+
+- name: Deploy monitoring configuration files
+  ansible.builtin.import_tasks: config.yml
+
+- name: Deploy monitoring scripts and helper utilities
+  ansible.builtin.import_tasks: scripts.yml
+
+- name: Deploy systemd failure hooks and service drop-ins
+  ansible.builtin.import_tasks: systemd_hooks.yml
+
+- name: Reconcile checks catalog with healthchecks.io API
+  ansible.builtin.import_tasks: reconcile.yml
+
+- name: Deploy and enable composite heartbeat timer
+  ansible.builtin.import_tasks: heartbeat.yml

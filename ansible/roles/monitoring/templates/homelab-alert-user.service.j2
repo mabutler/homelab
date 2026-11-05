@@ -1,0 +1,10 @@
+[Unit]
+Description=Homelab2 User Failure Alert Dispatcher for %i
+OnFailure=
+
+[Service]
+Type=oneshot
+ExecStart=-/usr/bin/sudo -n /usr/local/bin/homelab-unit-alert --scope user --user %u --unit %i
+StandardOutput=journal
+StandardError=journal
+TimeoutSec=30

@@ -288,4 +288,7 @@
 - name: Import Feature 007 Antigravity Verification Playbook
   ansible.builtin.import_playbook: verify-phase7-antigravity.yml
 
+- name: Import Phase 8 Monitoring Verification Playbook
+  ansible.builtin.import_playbook: verify-phase8-monitoring.yml
+
 

@@ -1,0 +1,5 @@
+# Managed by Ansible (role: monitoring)
+# Dead-man's-switch healthcheck instrumentation for {{ check_slug }}
+[Service]
+ExecStartPre=-/usr/local/bin/homelab-hc-ping --slug {{ check_slug }} --event start --unit %n
+ExecStopPost=-/usr/local/bin/homelab-hc-ping --slug {{ check_slug }} --event stop --unit %n

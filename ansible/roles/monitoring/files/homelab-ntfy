@@ -1,0 +1,295 @@
+#!/usr/bin/env bash
+# /usr/local/bin/homelab-ntfy
+# Push notification dispatcher with deduplication, cooldown, and recovery state machine
+# Conforms to MON-NTFY-V1 contract
+
+set -euo pipefail
+
+ENV_FILE="/etc/homelab/monitoring.env"
+if [[ -f "$ENV_FILE" && -r "$ENV_FILE" ]]; then
+    # shellcheck disable=SC1090
+    source "$ENV_FILE"
+fi
+
+NTFY_SERVER_URL="${NTFY_SERVER_URL:-https://ntfy.sh}"
+NTFY_TOPIC="${NTFY_TOPIC:-}"
+NTFY_TOKEN="${NTFY_TOKEN:-}"
+MONITORING_COOLDOWN_SEC="${MONITORING_COOLDOWN_SEC:-900}"
+MONITORING_STATE_DIR="${MONITORING_STATE_DIR:-/var/lib/homelab/monitoring/state}"
+
+COMPONENT=""
+STATUS=""
+TITLE=""
+MESSAGE=""
+PRIORITY=""
+TAGS=""
+FORCE=false
+
+usage() {
+    cat <<EOF
+Usage: $0 --component <key> --status <failing|warning|ok|test> --title <title> --message <body> [options]
+
+Options:
+  --component <key>        Unique component identifier (required)
+  --status <status>        Status: failing, warning, ok, test (required)
+  --title <title>          Notification title (required)
+  --message <body>         Notification diagnostic body (required)
+  --priority <prio>        Priority: default (3), high (4), urgent (5)
+  --tags <tags>            Comma-separated ntfy tags/emojis
+  --force                  Bypass cooldown deduplication
+  -h, --help               Show this help message
+EOF
+    exit 1
+}
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --component)
+            COMPONENT="$2"
+            shift 2
+            ;;
+        --status)
+            STATUS="$2"
+            shift 2
+            ;;
+        --title)
+            TITLE="$2"
+            shift 2
+            ;;
+        --message)
+            MESSAGE="$2"
+            shift 2
+            ;;
+        --priority)
+            PRIORITY="$2"
+            shift 2
+            ;;
+        --tags)
+            TAGS="$2"
+            shift 2
+            ;;
+        --force)
+            FORCE=true
+            shift 1
+            ;;
+        -h|--help)
+            usage
+            ;;
+        *)
+            echo "Unknown argument: $1" >&2
+            usage
+            ;;
+    esac
+done
+
+if [[ -z "$COMPONENT" || -z "$STATUS" || -z "$TITLE" || -z "$MESSAGE" ]]; then
+    echo "ERROR: --component, --status, --title, and --message are required." >&2
+    exit 1
+fi
+
+case "$STATUS" in
+    ok|warning|failing|test) ;;
+    *)
+        echo "ERROR: Invalid status '$STATUS'. Must be one of: ok, warning, failing, test." >&2
+        exit 1
+        ;;
+esac
+
+# Normalize Priority
+if [[ -z "$PRIORITY" ]]; then
+    case "$STATUS" in
+        ok|test) PRIORITY="3" ;;
+        warning) PRIORITY="4" ;;
+        failing) PRIORITY="4" ;;
+    esac
+else
+    case "$PRIORITY" in
+        default|3) PRIORITY="3" ;;
+        high|4) PRIORITY="4" ;;
+        urgent|5) PRIORITY="5" ;;
+        *) PRIORITY="3" ;;
+    esac
+fi
+
+# Map numerical priority to canonical name
+PRIO_NUM="$PRIORITY"
+case "$PRIO_NUM" in
+    5) SEVERITY_NAME="urgent" ;;
+    4) SEVERITY_NAME="high" ;;
+    *) SEVERITY_NAME="default" ;;
+esac
+
+log_event() {
+    local msg="$1"
+    if command -v systemd-cat >/dev/null 2>&1; then
+        echo "$msg" | systemd-cat -t homelab-ntfy
+    elif command -v logger >/dev/null 2>&1; then
+        logger -t homelab-ntfy "$msg"
+    else
+        echo "[homelab-ntfy] $msg" >&2
+    fi
+}
+
+# Ensure state directory exists
+if [[ ! -d "$MONITORING_STATE_DIR" ]]; then
+    mkdir -p "$MONITORING_STATE_DIR" 2>/dev/null || sudo mkdir -p "$MONITORING_STATE_DIR"
+    chmod 0700 "$MONITORING_STATE_DIR" 2>/dev/null || sudo chmod 0700 "$MONITORING_STATE_DIR"
+fi
+
+LOCK_FILE="${MONITORING_STATE_DIR}/.lock"
+touch "$LOCK_FILE" 2>/dev/null || sudo touch "$LOCK_FILE"
+exec 200>"$LOCK_FILE"
+flock -w 10 200 || {
+    echo "ERROR: Could not acquire lock on ${LOCK_FILE} within 10 seconds." >&2
+    exit 1
+}
+
+# Sanitize component key for filename
+SAFE_KEY=$(printf '%s' "$COMPONENT" | tr -c 'a-zA-Z0-9._-' '_')
+STATE_FILE="${MONITORING_STATE_DIR}/${SAFE_KEY}.json"
+
+NOW_EPOCH=$(date +%s)
+
+PRIOR_STATUS="ok"
+PRIOR_SEVERITY="default"
+PRIOR_FIRST_FAILURE=0
+PRIOR_LAST_SENT=0
+PRIOR_SUPPRESSED=0
+
+if [[ -f "$STATE_FILE" ]]; then
+    PRIOR_STATUS=$(jq -r '.status // "ok"' "$STATE_FILE" 2>/dev/null || echo "ok")
+    PRIOR_SEVERITY=$(jq -r '.severity // "default"' "$STATE_FILE" 2>/dev/null || echo "default")
+    PRIOR_FIRST_FAILURE=$(jq -r '.first_failure_epoch // 0' "$STATE_FILE" 2>/dev/null || echo 0)
+    PRIOR_LAST_SENT=$(jq -r '.last_sent_epoch // 0' "$STATE_FILE" 2>/dev/null || echo 0)
+    PRIOR_SUPPRESSED=$(jq -r '.suppressed_count // 0' "$STATE_FILE" 2>/dev/null || echo 0)
+fi
+
+write_state() {
+    local s_status="$1"
+    local s_severity="$2"
+    local s_first_fail="$3"
+    local s_last_sent="$4"
+    local s_suppressed="$5"
+    local s_title="$6"
+    local s_message="$7"
+
+    local tmp_file="${STATE_FILE}.tmp.$$"
+    jq -n \
+      --arg comp "$COMPONENT" \
+      --arg st "$s_status" \
+      --arg sev "$s_severity" \
+      --argjson ff "$s_first_fail" \
+      --argjson ls "$s_last_sent" \
+      --argjson sc "$s_suppressed" \
+      --arg lt "$s_title" \
+      --arg lm "$s_message" \
+      '{
+        component_key: $comp,
+        status: $st,
+        severity: $sev,
+        first_failure_epoch: $ff,
+        last_sent_epoch: $ls,
+        suppressed_count: $sc,
+        last_title: $lt,
+        last_message: $lm
+      }' > "$tmp_file"
+    mv "$tmp_file" "$STATE_FILE"
+    chmod 0600 "$STATE_FILE"
+}
+
+send_ntfy() {
+    local send_title="$1"
+    local send_msg="$2"
+    local send_prio="$3"
+    local send_tags="$4"
+
+    if [[ -z "$NTFY_TOPIC" ]]; then
+        log_event "NTFY_TOPIC is not configured; skipping dispatch to ntfy.sh for component: $COMPONENT"
+        return 0
+    fi
+
+    local curl_args=(
+        "-fsS"
+        "--retry" "3"
+        "--retry-delay" "2"
+        "--retry-all-errors"
+        "--connect-timeout" "5"
+        "--max-time" "15"
+        "-H" "Title: ${send_title}"
+        "-H" "Priority: ${send_prio}"
+        "-d" "${send_msg}"
+    )
+
+    if [[ -n "$send_tags" ]]; then
+        curl_args+=("-H" "Tags: ${send_tags}")
+    fi
+
+    if [[ -n "$NTFY_TOKEN" ]]; then
+        curl_args+=("-H" "Authorization: Bearer ${NTFY_TOKEN}")
+    fi
+
+    local target_url="${NTFY_SERVER_URL%/}/${NTFY_TOPIC}"
+    if curl "${curl_args[@]}" "$target_url" >/dev/null 2>&1; then
+        log_event "Successfully sent alert to ${NTFY_SERVER_URL}/${NTFY_TOPIC} [component=${COMPONENT}, priority=${send_prio}]"
+        return 0
+    else
+        local err_code=$?
+        log_event "ERROR: Failed to deliver alert to ${NTFY_SERVER_URL}/${NTFY_TOPIC} (curl exit code ${err_code})"
+        return 1
+    fi
+}
+
+# 1. Healthy state and prior state was ok: Silent-When-Healthy
+if [[ "$STATUS" == "ok" && "$PRIOR_STATUS" == "ok" ]]; then
+    # Silent no-op
+    exit 0
+fi
+
+# 2. Recovery: Transition from failing/warning to ok
+if [[ "$STATUS" == "ok" && ( "$PRIOR_STATUS" == "failing" || "$PRIOR_STATUS" == "warning" ) ]]; then
+    RECOVERY_TITLE="[RECOVERED] fidelacchius: ${COMPONENT}"
+    RECOVERY_TAGS="white_check_mark,tada"
+    RECOVERY_MSG="$MESSAGE"
+    if [[ $PRIOR_SUPPRESSED -gt 0 ]]; then
+        RECOVERY_MSG="${RECOVERY_MSG}"$'\n'"(Suppressed duplicate alerts: ${PRIOR_SUPPRESSED})"
+    fi
+
+    send_ntfy "$RECOVERY_TITLE" "$RECOVERY_MSG" "3" "$RECOVERY_TAGS" || true
+    write_state "ok" "default" 0 "$NOW_EPOCH" 0 "$RECOVERY_TITLE" "$RECOVERY_MSG"
+    exit 0
+fi
+
+# 3. Test Status: Always send, do not affect normal failure state
+if [[ "$STATUS" == "test" ]]; then
+    send_ntfy "$TITLE" "$MESSAGE" "$PRIO_NUM" "${TAGS:-test}"
+    exit 0
+fi
+
+# 4. Failure or Warning Status
+if [[ "$STATUS" == "failing" || "$STATUS" == "warning" ]]; then
+    TIME_SINCE_LAST=$(( NOW_EPOCH - PRIOR_LAST_SENT ))
+    ESCALATION=false
+    if [[ "$SEVERITY_NAME" == "urgent" && "$PRIOR_SEVERITY" != "urgent" ]]; then
+        ESCALATION=true
+    fi
+
+    # Check deduplication window
+    if [[ "$FORCE" != "true" && ( "$PRIOR_STATUS" == "failing" || "$PRIOR_STATUS" == "warning" ) && "$TIME_SINCE_LAST" -lt "$MONITORING_COOLDOWN_SEC" && "$ESCALATION" == "false" ]]; then
+        # Suppress duplicate alert
+        NEW_SUPPRESSED=$(( PRIOR_SUPPRESSED + 1 ))
+        write_state "$STATUS" "$PRIOR_SEVERITY" "$PRIOR_FIRST_FAILURE" "$PRIOR_LAST_SENT" "$NEW_SUPPRESSED" "$TITLE" "$MESSAGE"
+        log_event "Suppressed duplicate alert for component '${COMPONENT}' (suppressed_count=${NEW_SUPPRESSED}, cooldown=${MONITORING_COOLDOWN_SEC}s)"
+        exit 0
+    fi
+
+    # Dispatch Alert
+    send_ntfy "$TITLE" "$MESSAGE" "$PRIO_NUM" "$TAGS" || true
+    FIRST_FAIL="$PRIOR_FIRST_FAILURE"
+    if [[ "$FIRST_FAIL" -eq 0 || "$PRIOR_STATUS" == "ok" ]]; then
+        FIRST_FAIL="$NOW_EPOCH"
+    fi
+    write_state "$STATUS" "$SEVERITY_NAME" "$FIRST_FAIL" "$NOW_EPOCH" 0 "$TITLE" "$MESSAGE"
+    exit 0
+fi
+
+exit 0

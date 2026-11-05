@@ -1,4 +1,4 @@
 # Managed by Ansible: smartd daemon configuration for continuous disk diagnostics
 # Automatically scan all devices, monitor attributes, log temperature changes, schedule self-tests
 
-{{ smartd_scan_options | default('DEVICESCAN -a -o on -S on -s (S/../.././02|L/../../6/03) -H -C 197+ -U 198+ -W 4,45,55') }}
+{{ smartd_scan_options | default('DEVICESCAN -a -o on -S on -s (S/../.././02|L/../../6/03) -H -C 197+ -U 198+ -W 4,45,55 -m <nomailer> -M exec /usr/local/bin/homelab-smartd-alert') }}

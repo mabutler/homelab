@@ -13,9 +13,13 @@ backup_restic_password: "{{ vault_restic_password | default('') }}"
 
 # Inclusions and exclusions
 backup_include_paths:
+  - "/etc/homelab"
   - "/etc/homelab/vault.yml"
   - "/etc/homelab/apps"
+  - "/etc/homelab/monitoring.env"
+  - "/etc/homelab/monitoring/checks-catalog.json"
   - "/opt/services"
+  - "/var/lib/homelab/monitoring/checks.json"
 
 backup_exclude_patterns:
   - "/opt/services/*/data/*.sqlite3"

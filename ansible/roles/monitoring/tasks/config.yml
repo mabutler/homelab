@@ -1,0 +1,26 @@
+---
+# Configuration deployment tasks for monitoring role
+
+- name: Ensure /etc/homelab directory exists
+  ansible.builtin.file:
+    path: "/etc/homelab"
+    state: directory
+    owner: "root"
+    group: "root"
+    mode: "0755"
+
+- name: Deploy sanitized monitoring runtime environment template
+  ansible.builtin.copy:
+    src: "monitoring.env.example"
+    dest: "{{ monitoring_env_example_path }}"
+    owner: "root"
+    group: "root"
+    mode: "0644"
+
+- name: Render live monitoring runtime environment file
+  ansible.builtin.template:
+    src: "monitoring.env.j2"
+    dest: "{{ monitoring_env_path }}"
+    owner: "root"
+    group: "root"
+    mode: "0600"

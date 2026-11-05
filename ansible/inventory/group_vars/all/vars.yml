@@ -41,7 +41,7 @@ chrony_pool: "2.arch.pool.ntp.org iburst"
 chrony_rtcsync: true
 
 # Disk Diagnostics (smartmontools / smartd)
-smartd_scan_options: "DEVICESCAN -a -o on -S on -s (S/../.././02|L/../../6/03) -H -C 197+ -U 198+ -W 4,45,55"
+smartd_scan_options: "DEVICESCAN -a -o on -S on -s (S/../.././02|L/../../6/03) -H -C 197+ -U 198+ -W 4,45,55 -m <nomailer> -M exec /usr/local/bin/homelab-smartd-alert"
 
 # System Safeguards (systemd-oomd & journald)
 oomd_swap_used_limit: "90%"
@@ -103,4 +103,9 @@ frigate_events_retain_mode: "active_objects"
 frigate_snapshots_retain_days: 14
 frigate_camera_1_enabled: false
 frigate_camera_2_enabled: false
+
+# Platform Monitoring & Alerting (Phase 8)
+monitoring_cooldown_sec: 900
+monitoring_disk_warn_pct: 85
+monitoring_disk_crit_pct: 95
 

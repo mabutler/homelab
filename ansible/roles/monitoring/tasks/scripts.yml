@@ -1,0 +1,50 @@
+---
+# Deployment of monitoring scripts and helper utilities
+
+- name: Deploy homelab-ntfy dispatcher
+  ansible.builtin.copy:
+    src: "homelab-ntfy"
+    dest: "/usr/local/bin/homelab-ntfy"
+    owner: "root"
+    group: "root"
+    mode: "0755"
+
+- name: Deploy homelab-unit-alert collector
+  ansible.builtin.copy:
+    src: "homelab-unit-alert"
+    dest: "/usr/local/bin/homelab-unit-alert"
+    owner: "root"
+    group: "root"
+    mode: "0755"
+
+- name: Deploy homelab-hc-ping helper
+  ansible.builtin.copy:
+    src: "homelab-hc-ping"
+    dest: "/usr/local/bin/homelab-hc-ping"
+    owner: "root"
+    group: "root"
+    mode: "0755"
+
+- name: Deploy homelab-hc-run job wrapper
+  ansible.builtin.copy:
+    src: "homelab-hc-run"
+    dest: "/usr/local/bin/homelab-hc-run"
+    owner: "root"
+    group: "root"
+    mode: "0755"
+
+- name: Deploy homelab-hc-reconcile tool
+  ansible.builtin.copy:
+    src: "homelab-hc-reconcile"
+    dest: "/usr/local/bin/homelab-hc-reconcile"
+    owner: "root"
+    group: "root"
+    mode: "0755"
+
+- name: Deploy homelab-smartd-alert handler
+  ansible.builtin.copy:
+    src: "homelab-smartd-alert"
+    dest: "/usr/local/bin/homelab-smartd-alert"
+    owner: "root"
+    group: "root"
+    mode: "0755"

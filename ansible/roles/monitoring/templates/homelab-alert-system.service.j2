@@ -1,0 +1,13 @@
+[Unit]
+Description=Homelab2 Failure Alert Dispatcher for %i
+After=network-online.target
+OnFailure=
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+ExecStart=-/usr/local/bin/homelab-unit-alert --scope system --unit %i
+StandardOutput=journal
+StandardError=journal
+TimeoutSec=30

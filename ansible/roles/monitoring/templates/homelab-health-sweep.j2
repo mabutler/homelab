@@ -1,0 +1,249 @@
+#!/usr/bin/env bash
+# /usr/local/bin/homelab-health-sweep
+# Composite platform health verification and dead-man's-switch heartbeat dispatcher
+# Managed by Ansible (role: monitoring) - DO NOT EDIT MANUALLY
+# Conforms to MON-SWEEP-V1 contract
+
+set -euo pipefail
+
+ENV_FILE="{{ monitoring_env_path }}"
+if [[ -f "$ENV_FILE" ]]; then
+    # shellcheck disable=SC1090
+    source "$ENV_FILE"
+fi
+
+MONITORING_DISK_WARN_PCT="${MONITORING_DISK_WARN_PCT:-{{ monitoring_disk_warn_pct }}}"
+MONITORING_DISK_CRIT_PCT="${MONITORING_DISK_CRIT_PCT:-{{ monitoring_disk_crit_pct }}}"
+NTFY_BIN="/usr/local/bin/homelab-ntfy"
+HC_PING_BIN="/usr/local/bin/homelab-hc-ping"
+HEARTBEAT_SLUG="fidelacchius-host-heartbeat"
+
+FAILURES=()
+
+# 1. Continuous Infrastructure & System Services
+SYSTEM_SERVICES=(
+{% for s in monitoring_required_system_services %}
+    "{{ s }}"
+{% endfor %}
+)
+
+for svc in "${SYSTEM_SERVICES[@]}"; do
+    if systemctl is-active --quiet "$svc"; then
+        if [[ -x "$NTFY_BIN" ]]; then
+            "$NTFY_BIN" \
+                --component "service-${svc}" \
+                --status ok \
+                --title "Service ${svc} healthy" \
+                --message "System service ${svc} is active." || true
+        fi
+    else
+        FAILURES+=("System service ${svc} is inactive")
+        if [[ -x "$NTFY_BIN" ]]; then
+            "$NTFY_BIN" \
+                --component "service-${svc}" \
+                --status failing \
+                --priority high \
+                --tags "rotating_light,systemd" \
+                --title "[SERVICE DOWN] fidelacchius: ${svc}" \
+                --message "System service ${svc} is not active." || true
+        fi
+    fi
+done
+
+# 2. User Services
+{% for u in monitoring_required_user_services %}
+if [[ -f "{{ u.condition_file }}" ]]; then
+    if systemctl --machine="{{ u.user }}@.host" --user is-active --quiet "{{ u.name }}"; then
+        if [[ -x "$NTFY_BIN" ]]; then
+            "$NTFY_BIN" \
+                --component "service-{{ u.name }}" \
+                --status ok \
+                --title "User service {{ u.name }} healthy" \
+                --message "User service {{ u.name }} is active." || true
+        fi
+    else
+        FAILURES+=("User service {{ u.name }} is inactive")
+        if [[ -x "$NTFY_BIN" ]]; then
+            "$NTFY_BIN" \
+                --component "service-{{ u.name }}" \
+                --status failing \
+                --priority high \
+                --tags "rotating_light,systemd" \
+                --title "[SERVICE DOWN] fidelacchius: {{ u.name }} (user)" \
+                --message "User service {{ u.name }} for user {{ u.user }} is not active." || true
+        fi
+    fi
+fi
+{% endfor %}
+
+# 3. Dynamic Docker Container Discovery
+if systemctl is-active --quiet docker.service; then
+    CONTAINERS=$(docker ps -a --format '{% raw %}{{.Names}}{% endraw %}' 2>/dev/null || true)
+    for c_name in $CONTAINERS; do
+        c_status=$(docker inspect --format '{% raw %}{{.State.Status}}{% endraw %}' "$c_name" 2>/dev/null || echo "unknown")
+        c_exit=$(docker inspect --format '{% raw %}{{.State.ExitCode}}{% endraw %}' "$c_name" 2>/dev/null || echo "0")
+        c_health=$(docker inspect --format '{% raw %}{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}{% endraw %}' "$c_name" 2>/dev/null || echo "none")
+
+        if [[ "$c_status" == "restarting" || "$c_status" == "dead" || ( "$c_status" == "exited" && "$c_exit" != "0" ) || "$c_health" == "unhealthy" ]]; then
+            FAILURES+=("Container ${c_name} degraded (status=${c_status}, exit=${c_exit}, health=${c_health})")
+            if [[ -x "$NTFY_BIN" ]]; then
+                "$NTFY_BIN" \
+                    --component "container-${c_name}" \
+                    --status failing \
+                    --priority high \
+                    --tags "whale,warning" \
+                    --title "[CONTAINER UNHEALTHY] fidelacchius: ${c_name}" \
+                    --message "Container ${c_name} entered unhealthy state (status=${c_status}, exit=${c_exit}, health=${c_health})." || true
+            fi
+        else
+            if [[ -x "$NTFY_BIN" ]]; then
+                "$NTFY_BIN" \
+                    --component "container-${c_name}" \
+                    --status ok \
+                    --title "Container ${c_name} healthy" \
+                    --message "Container ${c_name} is running normally." || true
+            fi
+        fi
+    done
+fi
+
+# 4. HTTP & Overlay Readiness Probes
+{% for probe in monitoring_http_probes %}
+probe_ok=false
+for attempt in {1..3}; do
+    if curl -fsS --connect-timeout 3 --max-time 5 "{{ probe.url }}" >/dev/null 2>&1; then
+        probe_ok=true
+        break
+    fi
+    sleep 2
+done
+
+if [[ "$probe_ok" == "true" ]]; then
+    if [[ -x "$NTFY_BIN" ]]; then
+        "$NTFY_BIN" \
+            --component "probe-{{ probe.name }}" \
+            --status ok \
+            --title "Probe {{ probe.name }} healthy" \
+            --message "Readiness probe {{ probe.name }} succeeded." || true
+    fi
+else
+    FAILURES+=("Probe {{ probe.name }} failed ({{ probe.url }})")
+    if [[ -x "$NTFY_BIN" ]]; then
+        "$NTFY_BIN" \
+            --component "probe-{{ probe.name }}" \
+            --status failing \
+            --priority high \
+            --tags "warning,globe" \
+            --title "[PROBE FAILED] fidelacchius: {{ probe.name }}" \
+            --message "HTTP readiness probe for {{ probe.name }} ({{ probe.url }}) failed after 3 attempts." || true
+    fi
+fi
+{% endfor %}
+
+# Tailscale Overlay Status Probe
+ts_state=$(tailscale status --json 2>/dev/null | jq -r '.BackendState // "Unknown"' || echo "Unknown")
+if [[ "$ts_state" == "Running" ]]; then
+    if [[ -x "$NTFY_BIN" ]]; then
+        "$NTFY_BIN" \
+            --component "probe-tailscale-status" \
+            --status ok \
+            --title "Tailscale overlay healthy" \
+            --message "Tailscale backend state is Running." || true
+    fi
+else
+    FAILURES+=("Tailscale overlay backend state is '$ts_state' (expected Running)")
+    if [[ -x "$NTFY_BIN" ]]; then
+        "$NTFY_BIN" \
+            --component "probe-tailscale-status" \
+            --status failing \
+            --priority high \
+            --tags "warning,link" \
+            --title "[OVERLAY DEGRADED] fidelacchius: Tailscale" \
+            --message "Tailscale overlay state is '${ts_state}', expected Running." || true
+    fi
+fi
+
+# 5. Storage Mounts & Capacity Thresholds
+MONITORED_MOUNTS=(
+{% for m in monitoring_monitored_mounts %}
+    "{{ m }}"
+{% endfor %}
+)
+
+for mount_path in "${MONITORED_MOUNTS[@]}"; do
+    safe_mount=$(printf '%s' "$mount_path" | tr -c 'a-zA-Z0-9._-' '_')
+
+    # Check mount accessibility
+    is_accessible=true
+    if [[ "$mount_path" == "/opt/services" ]]; then
+        if [[ ! -d "$mount_path" ]]; then is_accessible=false; fi
+    else
+        if ! mountpoint -q "$mount_path" 2>/dev/null && [[ ! -d "$mount_path" ]]; then
+            is_accessible=false
+        fi
+    fi
+
+    if [[ "$is_accessible" == "false" ]]; then
+        FAILURES+=("Storage mount ${mount_path} missing or inaccessible")
+        if [[ -x "$NTFY_BIN" ]]; then
+            "$NTFY_BIN" \
+                --component "disk-space-${safe_mount}" \
+                --status failing \
+                --priority urgent \
+                --tags "rotating_light,floppy_disk" \
+                --title "[MOUNT MISSING] fidelacchius: ${mount_path}" \
+                --message "Required storage mount ${mount_path} is missing or inaccessible." || true
+        fi
+        continue
+    fi
+
+    usage_pct=$(df -P "$mount_path" 2>/dev/null | awk 'NR==2 {print $5}' | tr -d '%' || echo "0")
+    if [[ "$usage_pct" -ge "$MONITORING_DISK_CRIT_PCT" ]]; then
+        FAILURES+=("Mount ${mount_path} critical capacity (${usage_pct}% >= ${MONITORING_DISK_CRIT_PCT}%)")
+        if [[ -x "$NTFY_BIN" ]]; then
+            "$NTFY_BIN" \
+                --component "disk-space-${safe_mount}" \
+                --status failing \
+                --priority urgent \
+                --tags "rotating_light,floppy_disk" \
+                --title "[STORAGE CRITICAL] fidelacchius: ${mount_path} at ${usage_pct}%" \
+                --message "Filesystem ${mount_path} usage is ${usage_pct}%, exceeding critical threshold of ${MONITORING_DISK_CRIT_PCT}%." || true
+        fi
+    elif [[ "$usage_pct" -ge "$MONITORING_DISK_WARN_PCT" ]]; then
+        FAILURES+=("Mount ${mount_path} warning capacity (${usage_pct}% >= ${MONITORING_DISK_WARN_PCT}%)")
+        if [[ -x "$NTFY_BIN" ]]; then
+            "$NTFY_BIN" \
+                --component "disk-space-${safe_mount}" \
+                --status warning \
+                --priority high \
+                --tags "warning,floppy_disk" \
+                --title "[STORAGE WARNING] fidelacchius: ${mount_path} at ${usage_pct}%" \
+                --message "Filesystem ${mount_path} usage is ${usage_pct}%, exceeding warning threshold of ${MONITORING_DISK_WARN_PCT}%." || true
+        fi
+    else
+        if [[ -x "$NTFY_BIN" ]]; then
+            "$NTFY_BIN" \
+                --component "disk-space-${safe_mount}" \
+                --status ok \
+                --title "Storage ${mount_path} healthy" \
+                --message "Filesystem ${mount_path} usage is ${usage_pct}%." || true
+        fi
+    fi
+done
+
+# 6. Composite Heartbeat Signal
+if [[ {% raw %}${#FAILURES[@]}{% endraw %} -eq 0 ]]; then
+    if [[ -x "$HC_PING_BIN" ]]; then
+        "$HC_PING_BIN" --slug "$HEARTBEAT_SLUG" --event success || true
+    fi
+    echo "Health sweep completed successfully (0 failures)."
+    exit 0
+else
+    FAIL_SUMMARY=$(printf '%s\n' "${FAILURES[@]}")
+    echo "Health sweep detected failures:" >&2
+    echo "$FAIL_SUMMARY" >&2
+    if [[ -x "$HC_PING_BIN" ]]; then
+        "$HC_PING_BIN" --slug "$HEARTBEAT_SLUG" --event fail --message "$FAIL_SUMMARY" || true
+    fi
+    exit 1
+fi

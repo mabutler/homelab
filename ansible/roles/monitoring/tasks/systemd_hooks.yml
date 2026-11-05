@@ -1,0 +1,98 @@
+---
+# Deployment of systemd failure hooks, alert services, recursion guards, and maintenance drop-ins
+
+- name: Ensure systemd drop-in directories exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "root"
+    group: "root"
+    mode: "0755"
+  loop:
+    - "/etc/systemd/system/service.d"
+    - "/etc/systemd/user/service.d"
+    - "/etc/systemd/system/homelab-alert@.service.d"
+    - "/etc/systemd/user/homelab-alert@.service.d"
+
+- name: Deploy system failure alert dispatcher service
+  ansible.builtin.template:
+    src: "homelab-alert-system.service.j2"
+    dest: "/etc/systemd/system/homelab-alert@.service"
+    owner: "root"
+    group: "root"
+    mode: "0644"
+  notify:
+    - Reload systemd system manager
+
+- name: Deploy user failure alert dispatcher service
+  ansible.builtin.template:
+    src: "homelab-alert-user.service.j2"
+    dest: "/etc/systemd/user/homelab-alert@.service"
+    owner: "root"
+    group: "root"
+    mode: "0644"
+  notify:
+    - Reload systemd user manager
+
+- name: Deploy global systemd failure hook for system services
+  ansible.builtin.template:
+    src: "99-homelab-failure-alert.conf.j2"
+    dest: "/etc/systemd/system/service.d/99-homelab-failure-alert.conf"
+    owner: "root"
+    group: "root"
+    mode: "0644"
+  notify:
+    - Reload systemd system manager
+
+- name: Deploy global systemd failure hook for user services
+  ansible.builtin.template:
+    src: "99-homelab-failure-alert.conf.j2"
+    dest: "/etc/systemd/user/service.d/99-homelab-failure-alert.conf"
+    owner: "root"
+    group: "root"
+    mode: "0644"
+  notify:
+    - Reload systemd user manager
+
+- name: Deploy recursion guard for system failure alert service
+  ansible.builtin.template:
+    src: "99-zz-no-recursion.conf.j2"
+    dest: "/etc/systemd/system/homelab-alert@.service.d/99-zz-no-recursion.conf"
+    owner: "root"
+    group: "root"
+    mode: "0644"
+  notify:
+    - Reload systemd system manager
+
+- name: Deploy recursion guard for user failure alert service
+  ansible.builtin.template:
+    src: "99-zz-no-recursion.conf.j2"
+    dest: "/etc/systemd/user/homelab-alert@.service.d/99-zz-no-recursion.conf"
+    owner: "root"
+    group: "root"
+    mode: "0644"
+  notify:
+    - Reload systemd user manager
+
+# Scheduled Maintenance Job Instrumentation (US2)
+- name: Ensure maintenance service drop-in directories exist
+  ansible.builtin.file:
+    path: "/etc/systemd/system/{{ item.unit }}.d"
+    state: directory
+    owner: "root"
+    group: "root"
+    mode: "0755"
+  loop: "{{ monitoring_maintenance_services }}"
+
+- name: Deploy healthchecks drop-ins for scheduled maintenance services
+  ansible.builtin.template:
+    src: "10-healthchecks.conf.j2"
+    dest: "/etc/systemd/system/{{ item.unit }}.d/10-healthchecks.conf"
+    owner: "root"
+    group: "root"
+    mode: "0644"
+  vars:
+    check_slug: "{{ item.slug }}"
+  loop: "{{ monitoring_maintenance_services }}"
+  notify:
+    - Reload systemd system manager

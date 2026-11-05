@@ -1,0 +1,27 @@
+---
+# Handlers for role: monitoring
+
+- name: Reload systemd system manager
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: Reload systemd user manager
+  ansible.builtin.command:
+    cmd: systemctl --user daemon-reload
+  become: true
+  become_user: "admin"
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/1000"
+    DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/1000/bus"
+  changed_when: true
+  failed_when: false
+
+- name: Restart homelab-heartbeat timer
+  ansible.builtin.systemd:
+    name: homelab-heartbeat.timer
+    state: restarted
+
+- name: Restart smartd
+  ansible.builtin.systemd:
+    name: smartd
+    state: restarted

@@ -125,3 +125,9 @@
         - antigravity
         - remote_control
         - agent
+
+    - role: monitoring
+      tags:
+        - monitoring
+        - ntfy
+        - healthchecks

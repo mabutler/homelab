@@ -1,0 +1,30 @@
+---
+# Pre-flight secret and dependency validation for monitoring role
+
+- name: Assert required monitoring configuration directories exist
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: "{{ monitoring_config_dir }}", owner: "root", group: "root", mode: "0755" }
+    - { path: "{{ monitoring_data_dir }}", owner: "root", group: "root", mode: "0700" }
+    - { path: "{{ monitoring_state_dir }}", owner: "root", group: "root", mode: "0700" }
+
+- name: Validate monitoring secrets in vault.yml
+  ansible.builtin.assert:
+    that:
+      - monitoring_ntfy_topic is defined
+      - monitoring_ntfy_topic | string | length > 0
+      - "'CHANGE_ME' not in (monitoring_ntfy_topic | string)"
+      - "' ' not in (monitoring_ntfy_topic | string)"
+      - monitoring_healthchecks_api_key is defined
+      - monitoring_healthchecks_api_key | string | length > 0
+      - "'CHANGE_ME' not in (monitoring_healthchecks_api_key | string)"
+    fail_msg: >
+      Monitoring secrets are missing or contain unconfigured 'CHANGE_ME' placeholders.
+      Please define valid 'vault_ntfy_topic' and 'vault_healthchecks_api_key' in
+      ansible/inventory/group_vars/all/vault.yml.
+    quiet: true

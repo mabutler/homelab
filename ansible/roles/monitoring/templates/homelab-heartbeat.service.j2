@@ -1,0 +1,14 @@
+[Unit]
+Description=Homelab2 Composite Health Sweep & Dead-Man's-Switch Heartbeat
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+EnvironmentFile={{ monitoring_env_path }}
+ExecStart=/usr/local/bin/homelab-health-sweep
+StandardOutput=journal
+StandardError=journal
+TimeoutSec=60

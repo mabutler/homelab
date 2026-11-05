@@ -1,0 +1,217 @@
+#!/usr/bin/env bash
+# /usr/local/bin/homelab-hc-reconcile
+# Zero-touch API v3 reconciler for Healthchecks.io checks
+# Conforms to MON-HC-V1 contract
+
+set -euo pipefail
+
+ENV_FILE="/etc/homelab/monitoring.env"
+if [[ -f "$ENV_FILE" && -r "$ENV_FILE" ]]; then
+    # shellcheck disable=SC1090
+    source "$ENV_FILE"
+fi
+
+HEALTHCHECKS_API_URL="${HEALTHCHECKS_API_URL:-https://healthchecks.io/api/v3}"
+HEALTHCHECKS_PING_BASE_URL="${HEALTHCHECKS_PING_BASE_URL:-https://hc-ping.com}"
+HEALTHCHECKS_API_KEY="${HEALTHCHECKS_API_KEY:-}"
+CHECKS_FILE="${MONITORING_CHECKS_FILE:-/var/lib/homelab/monitoring/checks.json}"
+CATALOG_FILE="${MONITORING_CATALOG_FILE:-/etc/homelab/monitoring/checks-catalog.json}"
+
+ENSURE_SLUG=""
+ENSURE_NAME=""
+ENSURE_SCHEDULE=""
+ENSURE_TIMEOUT=""
+ENSURE_TZ="America/New_York"
+ENSURE_GRACE="3600"
+ENSURE_TAGS="fidelacchius homelab dynamic"
+
+usage() {
+    cat <<EOF
+Usage: $0 [options]
+
+Options:
+  --catalog <path>          Path to checks catalog JSON (default: /etc/homelab/monitoring/checks-catalog.json)
+  --ensure-slug <slug>      Dynamically ensure a single check exists
+  --name <name>             Human-readable name for --ensure-slug
+  --schedule <cron>         Cron schedule expression
+  --timeout <sec>           Timeout in seconds
+  --tz <timezone>           Timezone (default: America/New_York)
+  --grace <sec>             Grace period in seconds (default: 3600)
+  --tags <tags>             Tags for the check
+  -h, --help                Show this help message
+EOF
+    exit 1
+}
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --catalog)
+            CATALOG_FILE="$2"
+            shift 2
+            ;;
+        --ensure-slug)
+            ENSURE_SLUG="$2"
+            shift 2
+            ;;
+        --name)
+            ENSURE_NAME="$2"
+            shift 2
+            ;;
+        --schedule)
+            ENSURE_SCHEDULE="$2"
+            shift 2
+            ;;
+        --timeout)
+            ENSURE_TIMEOUT="$2"
+            shift 2
+            ;;
+        --tz)
+            ENSURE_TZ="$2"
+            shift 2
+            ;;
+        --grace)
+            ENSURE_GRACE="$2"
+            shift 2
+            ;;
+        --tags)
+            ENSURE_TAGS="$2"
+            shift 2
+            ;;
+        -h|--help)
+            usage
+            ;;
+        *)
+            echo "Unknown argument: $1" >&2
+            usage
+            ;;
+    esac
+done
+
+# Initialize checks.json if not present
+CHECKS_DIR=$(dirname "$CHECKS_FILE")
+if [[ ! -d "$CHECKS_DIR" ]]; then
+    mkdir -p "$CHECKS_DIR" 2>/dev/null || sudo mkdir -p "$CHECKS_DIR"
+    chmod 0700 "$CHECKS_DIR" 2>/dev/null || sudo chmod 0700 "$CHECKS_DIR"
+fi
+
+if [[ ! -f "$CHECKS_FILE" ]]; then
+    echo '{"version": "1.0", "updated_epoch": 0, "checks": {}}' > "$CHECKS_FILE" 2>/dev/null || sudo bash -c "echo '{\"version\": \"1.0\", \"updated_epoch\": 0, \"checks\": {}}' > '$CHECKS_FILE'"
+    chmod 0600 "$CHECKS_FILE" 2>/dev/null || sudo chmod 0600 "$CHECKS_FILE"
+fi
+
+upsert_check() {
+    local check_json="$1"
+    local slug
+    slug=$(echo "$check_json" | jq -r '.slug')
+    local name
+    name=$(echo "$check_json" | jq -r '.name')
+
+    local ping_url=""
+    local check_uuid=""
+
+    if [[ -n "$HEALTHCHECKS_API_KEY" && "$HEALTHCHECKS_API_KEY" != *"CHANGE_ME"* ]]; then
+        local response_body
+        local http_code
+        local resp_file
+        resp_file=$(mktemp "/tmp/hc-resp-${slug}.XXXXXX")
+
+        http_code=$(curl -sS -o "$resp_file" -w "%{http_code}" \
+            --connect-timeout 5 --max-time 15 \
+            -H "X-Api-Key: ${HEALTHCHECKS_API_KEY}" \
+            -H "Content-Type: application/json" \
+            -X POST \
+            -d "$check_json" \
+            "${HEALTHCHECKS_API_URL%/}/checks/" 2>/dev/null || echo "000")
+
+        if [[ "$http_code" == "200" || "$http_code" == "201" ]]; then
+            ping_url=$(jq -r '.ping_url // ""' "$resp_file" 2>/dev/null || echo "")
+            check_uuid=$(jq -r '.uuid // ""' "$resp_file" 2>/dev/null || echo "")
+            echo "Reconciled check '${slug}' via API v3 (HTTP ${http_code}): ${ping_url}"
+        else
+            echo "Warning: API v3 call for '${slug}' returned HTTP ${http_code}." >&2
+        fi
+        rm -f "$resp_file"
+    fi
+
+    # Fallback if API returned empty or wasn't reachable
+    if [[ -z "$ping_url" || "$ping_url" == "null" ]]; then
+        # Check if already present in checks.json
+        local existing_url
+        existing_url=$(jq -r --arg sl "$slug" '.checks[$sl].ping_url // ""' "$CHECKS_FILE" 2>/dev/null || echo "")
+        if [[ -n "$existing_url" && "$existing_url" != "null" ]]; then
+            ping_url="$existing_url"
+            check_uuid=$(jq -r --arg sl "$slug" '.checks[$sl].uuid // ""' "$CHECKS_FILE" 2>/dev/null || echo "")
+        else
+            ping_url="${HEALTHCHECKS_PING_BASE_URL%/}/${slug}"
+            check_uuid=""
+            echo "Assigned fallback ping URL for '${slug}': ${ping_url}"
+        fi
+    fi
+
+    local now_epoch
+    now_epoch=$(date +%s)
+
+    # Persist into checks.json
+    local tmp_file
+    tmp_file=$(mktemp "${CHECKS_FILE}.tmp.XXXXXX")
+    jq --arg sl "$slug" \
+       --arg nm "$name" \
+       --arg pu "$ping_url" \
+       --arg uid "$check_uuid" \
+       --argjson ep "$now_epoch" \
+       '.updated_epoch = $ep | .checks[$sl] = {
+           name: $nm,
+           ping_url: $pu,
+           uuid: $uid,
+           updated_epoch: $ep
+       }' "$CHECKS_FILE" > "$tmp_file"
+
+    mv "$tmp_file" "$CHECKS_FILE"
+    chmod 0600 "$CHECKS_FILE"
+}
+
+if [[ -n "$ENSURE_SLUG" ]]; then
+    # Dynamic single check reconciliation
+    NAME="${ENSURE_NAME:-fidelacchius: ${ENSURE_SLUG}}"
+    DYNAMIC_PAYLOAD=$(jq -n \
+        --arg name "$NAME" \
+        --arg slug "$ENSURE_SLUG" \
+        --arg tags "$ENSURE_TAGS" \
+        --arg desc "Dynamically provisioned check for ${ENSURE_SLUG}" \
+        --arg tz "$ENSURE_TZ" \
+        --argjson grace "${ENSURE_GRACE:-3600}" \
+        --arg sched "$ENSURE_SCHEDULE" \
+        --arg tout "$ENSURE_TIMEOUT" \
+        '{
+            name: $name,
+            slug: $slug,
+            tags: $tags,
+            desc: $desc,
+            channels: "*",
+            unique: ["name", "slug"]
+        }
+        | if $sched != "" then .schedule = $sched | .tz = $tz else . end
+        | if $tout != "" then .timeout = ($tout | tonumber) else . end
+        | if ($sched == "" and $tout == "") then .timeout = 3600 else . end
+        ')
+
+    upsert_check "$DYNAMIC_PAYLOAD"
+    exit 0
+fi
+
+# Catalog reconciliation
+if [[ ! -f "$CATALOG_FILE" ]]; then
+    echo "ERROR: Checks catalog file not found: $CATALOG_FILE" >&2
+    exit 1
+fi
+
+CHECK_COUNT=$(jq '.checks | length' "$CATALOG_FILE" 2>/dev/null || echo 0)
+echo "Reconciling ${CHECK_COUNT} checks from ${CATALOG_FILE}..."
+
+for (( i=0; i<CHECK_COUNT; i++ )); do
+    CHECK_DEF=$(jq -c ".checks[$i]" "$CATALOG_FILE")
+    upsert_check "$CHECK_DEF"
+done
+
+echo "Reconciliation complete. Checks saved to ${CHECKS_FILE}."
+exit 0

@@ -1,0 +1,103 @@
+---
+- name: Homelab2 Phase 8 Platform Monitoring & Alerting Acceptance Verification
+  hosts: homelab_nodes
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: "MON-01: Assert secret isolation and file permissions on monitoring.env"
+      ansible.builtin.shell:
+        cmd: |
+          test "$(stat -c '%a:%u:%g' /etc/homelab/monitoring.env)" = "600:0:0" && \
+          test "$(stat -c '%a:%u:%g' /etc/homelab/monitoring.env.example)" = "644:0:0"
+      changed_when: false
+
+    - name: "MON-02: Assert global systemd failure hooks and recursion guards"
+      ansible.builtin.shell:
+        cmd: |
+          test -f /etc/systemd/system/service.d/99-homelab-failure-alert.conf && \
+          test -f /etc/systemd/user/service.d/99-homelab-failure-alert.conf && \
+          test -f /etc/systemd/system/homelab-alert@.service && \
+          test -f /etc/systemd/user/homelab-alert@.service && \
+          test -f /etc/systemd/system/homelab-alert@.service.d/99-zz-no-recursion.conf && \
+          test -f /etc/systemd/user/homelab-alert@.service.d/99-zz-no-recursion.conf && \
+          systemctl show sshd.service -p OnFailure --value | grep -q "homelab-alert@sshd.service" && \
+          test -z "$(systemctl show homelab-alert@sshd.service -p OnFailure --value)"
+      changed_when: false
+
+    - name: "MON-03: Assert healthchecks reconciliation tool and checks registry"
+      ansible.builtin.shell:
+        cmd: |
+          test -x /usr/local/bin/homelab-hc-reconcile && \
+          jq -e '.checks | length == 6 and (all(.channels == "*"))' /etc/homelab/monitoring/checks-catalog.json >/dev/null && \
+          test "$(stat -c '%a:%u:%g' /var/lib/homelab/monitoring/checks.json)" = "600:0:0" && \
+          test "$(jq '.checks | keys | length' /var/lib/homelab/monitoring/checks.json)" -ge 6
+      changed_when: false
+
+    - name: "MON-04: Assert maintenance job instrumentation drop-ins and wrappers"
+      ansible.builtin.shell:
+        cmd: |
+          test -x /usr/local/bin/homelab-hc-run && \
+          test -x /usr/local/bin/homelab-hc-ping && \
+          systemctl show homelab-backup.service -p ExecStartPre -p ExecStopPost --value | grep -q "homelab-hc-ping" && \
+          systemctl show homelab-backup-check.service -p ExecStartPre -p ExecStopPost --value | grep -q "homelab-hc-ping" && \
+          systemctl show vaultwarden-backup.service -p ExecStartPre -p ExecStopPost --value | grep -q "homelab-hc-ping" && \
+          systemctl show snapraid-sync.service -p ExecStartPre -p ExecStopPost --value | grep -q "homelab-hc-ping" && \
+          systemctl show snapraid-scrub.service -p ExecStartPre -p ExecStopPost --value | grep -q "homelab-hc-ping"
+      changed_when: false
+
+    - name: "MON-05: Assert composite health sweep service and 5-minute heartbeat timer"
+      ansible.builtin.shell:
+        cmd: |
+          systemctl is-enabled homelab-heartbeat.timer | grep -q "enabled" && \
+          systemctl is-active homelab-heartbeat.timer | grep -q "active" && \
+          /usr/local/bin/homelab-health-sweep
+      changed_when: false
+
+    - name: "MON-06: Assert physical disk SMART alert hook and active smartd service"
+      ansible.builtin.shell:
+        cmd: |
+          test -x /usr/local/bin/homelab-smartd-alert && \
+          grep -q -- '-M exec /usr/local/bin/homelab-smartd-alert' /etc/smartd.conf && \
+          systemctl is-active smartd.service | grep -q "active"
+      changed_when: false
+
+    - name: "MON-07: Assert alert deduplication and recovery state machine"
+      ansible.builtin.shell:
+        cmd: |
+          rm -f /var/lib/homelab/monitoring/state/verify-flapping-ansible-test.json
+          for i in {1..5}; do
+            /usr/local/bin/homelab-ntfy --component verify-flapping-ansible-test --status failing --title "Flap" --message "Simulated"
+          done && \
+          test "$(jq -r '.suppressed_count // 0' /var/lib/homelab/monitoring/state/verify-flapping-ansible-test.json)" = "4" && \
+          /usr/local/bin/homelab-ntfy --component verify-flapping-ansible-test --status ok --title "Recov" --message "Resolved" && \
+          test "$(jq -r '.status // ""' /var/lib/homelab/monitoring/state/verify-flapping-ansible-test.json)" = "ok" && \
+          test "$(jq -r '.suppressed_count // -1' /var/lib/homelab/monitoring/state/verify-flapping-ansible-test.json)" = "0" && \
+          rm -f /var/lib/homelab/monitoring/state/verify-flapping-ansible-test.json
+      changed_when: false
+
+    - name: "MON-08: Assert outbound ntfy.sh and healthchecks.io connectivity"
+      ansible.builtin.shell:
+        cmd: |
+          /usr/local/bin/homelab-ntfy --component verify-connectivity-test --status test --title "[VERIFY] Connectivity Check" --message "Ansible verification MON-08" && \
+          curl -fsS --retry 2 --connect-timeout 5 --max-time 10 https://hc-ping.com >/dev/null
+      changed_when: false
+
+    - name: "MON-09: Assert offsite backup coverage of monitoring config and registry"
+      ansible.builtin.shell:
+        cmd: |
+          test -f /etc/homelab/backup-include.txt && \
+          grep -Fxq '/etc/homelab' /etc/homelab/backup-include.txt && \
+          grep -Fxq '/var/lib/homelab/monitoring/checks.json' /etc/homelab/backup-include.txt
+      changed_when: false
+
+    - name: "MON-10: Assert zero self-hosted monitoring containers and clean logs"
+      ansible.builtin.shell:
+        cmd: |
+          ! {% raw %}docker ps -a --format '{{.Image}}'{% endraw %} | grep -iE 'binwiederhier/ntfy|healthchecks/healthchecks' && \
+          ! journalctl -u homelab-heartbeat.service -n 50 --no-pager | grep -iE 'Traceback|panic:|syntax error|command not found'
+      changed_when: false
+
+    - name: Display Phase 8 verification status
+      ansible.builtin.debug:
+        msg: "✓ All 10 Platform Monitoring & Alerting assertions (MON-01 to MON-10) passed successfully."
