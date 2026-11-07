@@ -115,6 +115,11 @@
         - frigate
         - app
 
+    - role: immich
+      tags:
+        - immich
+        - app
+
     - role: backup
       tags:
         - backup

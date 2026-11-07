@@ -1,0 +1,92 @@
+# Docker Compose manifest for Immich Photo Management Platform
+# Managed by Ansible - homelab2
+# Contract: IMMICH-SERVICE-V1
+
+services:
+  immich-server:
+    container_name: immich_server
+    image: {{ immich_server_image | default('ghcr.io/immich-app/immich-server:v3.3.6') }}
+    restart: unless-stopped
+    stop_grace_period: 30s
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - {{ immich_storage_dir | default('/mnt/storage/media/photos') }}:/data
+      - {{ immich_data_dir | default('/opt/services/immich/data') }}/thumbs:/data/thumbs
+      - {{ immich_data_dir | default('/opt/services/immich/data') }}/profile:/data/profile
+      - {{ immich_backup_dir | default('/opt/services/immich/backups') }}:/backups
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+      - LIBVA_DRIVER_NAME={{ immich_libva_driver | default('iHD') }}
+    ports:
+      - "{{ immich_host_bind | default('0.0.0.0') }}:{{ immich_port | default(2283) }}:2283"
+    devices:
+      - source: {{ immich_igpu_render_device | default('/dev/dri/by-path/pci-0000:00:02.0-render') }}
+        target: /dev/dri/renderD128
+        permissions: rwm
+      - source: {{ immich_igpu_card_device | default('/dev/dri/by-path/pci-0000:00:02.0-card') }}
+        target: /dev/dri/card0
+        permissions: rwm
+    depends_on:
+      redis:
+        condition: service_healthy
+      database:
+        condition: service_healthy
+      immich-machine-learning:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "immich-healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 45s
+
+  immich-machine-learning:
+    container_name: immich_machine_learning
+    image: {{ immich_ml_image | default('ghcr.io/immich-app/immich-machine-learning:v3.3.6') }}
+    restart: unless-stopped
+    stop_grace_period: 30s
+    volumes:
+      - {{ immich_data_dir | default('/opt/services/immich/data') }}/model-cache:/cache
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+    healthcheck:
+      test: ["CMD-SHELL", "python3 healthcheck.py"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  redis:
+    container_name: immich_redis
+    image: {{ immich_redis_image | default('docker.io/redis:6.2-alpine') }}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  database:
+    container_name: immich_postgres
+    image: {{ immich_db_image | default('ghcr.io/immich-app/postgres:16-vectorchord0.4.3-pgvectors0.2.0') }}
+    restart: unless-stopped
+    stop_grace_period: 60s
+    environment:
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_USER: ${DB_USERNAME:-immich}
+      POSTGRES_DB: ${DB_DATABASE_NAME:-immich}
+      POSTGRES_INITDB_ARGS: '--data-checksums'
+    volumes:
+      - {{ immich_data_dir | default('/opt/services/immich/data') }}/postgres:/var/lib/postgresql/data
+      - {{ immich_backup_dir | default('/opt/services/immich/backups') }}:/backups
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready --dbname='${DB_DATABASE_NAME:-immich}' --username='${DB_USERNAME:-immich}' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s

@@ -38,6 +38,9 @@ vault_frigate_camera_1_rtsp_sub_url: "rtsp://admin:CHANGE_ME_PASSWORD@192.168.4.
 vault_frigate_camera_2_rtsp_main_url: "rtsp://admin:CHANGE_ME_PASSWORD@192.168.4.202:554/h264Preview_01_main"
 vault_frigate_camera_2_rtsp_sub_url: "rtsp://admin:CHANGE_ME_PASSWORD@192.168.4.202:554/h264Preview_01_sub"
 
+# Immich Photo Management Platform Database Secret (Phase 5)
+immich_db_password: "CHANGE_ME_IN_VAULT"
+
 # Platform Monitoring & Alerting (Phase 8)
 # ntfy.sh push notification endpoint and secret topic identifier
 vault_ntfy_server_url: "https://ntfy.sh"

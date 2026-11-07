@@ -1,0 +1,69 @@
+---
+- name: Homelab2 Phase 5 Immich Photo Management Platform Deployment
+  hosts: homelab_nodes
+  become: true
+  gather_facts: true
+
+  pre_tasks:
+    - name: Verify vault.yml exists on controller
+      ansible.builtin.stat:
+        path: "{{ inventory_dir }}/group_vars/all/vault.yml"
+      register: vault_stat
+      delegate_to: localhost
+      run_once: true
+      tags:
+        - always
+
+    - name: Abort if vault.yml is missing
+      ansible.builtin.fail:
+        msg: >
+          CRITICAL ERROR: '{{ inventory_dir }}/group_vars/all/vault.yml' not found.
+          Copy 'vault.yml.example' to 'vault.yml' and configure required secrets before running.
+      when: not vault_stat.stat.exists
+      delegate_to: localhost
+      run_once: true
+      tags:
+        - always
+
+  roles:
+    - role: docker
+      tags:
+        - docker
+        - containers
+
+    - role: caddy
+      tags:
+        - caddy
+        - network
+        - ingress
+
+    - role: immich
+      tags:
+        - immich
+        - app
+
+  post_tasks:
+    - name: Verify Immich systemd service is active
+      ansible.builtin.systemd:
+        name: immich
+        state: started
+      register: immich_svc_status
+      failed_when: immich_svc_status.status.ActiveState != "active"
+
+    - name: Wait for Immich API /api/server/ping to return HTTP 200
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ immich_port | default(2283) }}/api/server/ping"
+        status_code: 200
+        return_content: true
+      register: immich_api_ping
+      until: immich_api_ping.status == 200
+      retries: 30
+      delay: 5
+
+    - name: Assert Immich ping probe returns expected response
+      ansible.builtin.assert:
+        that:
+          - immich_api_ping.json.res is defined
+          - immich_api_ping.json.res == "pong"
+        fail_msg: "Immich API ping probe returned unexpected response: {{ immich_api_ping.content }}"
+        success_msg: "Immich platform deployed and responding healthy on {{ immich_host_bind | default('127.0.0.1') }}:{{ immich_port | default(2283) }}."

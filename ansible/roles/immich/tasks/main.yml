@@ -1,0 +1,38 @@
+---
+# Main task orchestrator for Immich Photo Management Platform role
+
+- name: Include preflight assertions
+  ansible.builtin.include_tasks: preflight.yml
+  tags:
+    - immich
+    - immich_preflight
+
+- name: Include layout tasks
+  ansible.builtin.include_tasks: layout.yml
+  tags:
+    - immich
+    - immich_layout
+
+- name: Include config tasks
+  ansible.builtin.include_tasks: config.yml
+  tags:
+    - immich
+    - immich_config
+
+- name: Include service tasks
+  ansible.builtin.include_tasks: service.yml
+  tags:
+    - immich
+    - immich_service
+
+- name: Include backup tasks
+  ansible.builtin.include_tasks: backup.yml
+  tags:
+    - immich
+    - immich_backup
+
+- name: Include Caddy ingress tasks
+  ansible.builtin.include_tasks: caddy.yml
+  tags:
+    - immich
+    - immich_caddy

@@ -1,0 +1,33 @@
+# /etc/caddy/conf.d/30-immich.caddy
+# Managed by Ansible - homelab2
+# Contract: IMMICH-INGRESS-V1
+
+# Immich Photo Management Platform
+photos.{$HOMELAB_DOMAIN:lan} {
+    tls internal
+    log {
+        output stderr
+        format console
+        level INFO
+    }
+
+    # Support multi-gigabyte photo and video uploads (up to 50 GB per upload batch)
+    request_body {
+        max_size 50GB
+    }
+
+    # Reverse proxy to Immich loopback server binding
+    reverse_proxy 127.0.0.1:{{ immich_port | default(2283) }} {
+        # Streaming and connection timeouts
+        transport http {
+            dial_timeout 30s
+            response_header_timeout 300s
+        }
+
+        # WebSocket support handled natively by Caddy reverse_proxy
+        header_up Host {host}
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+    }
+}

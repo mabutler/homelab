@@ -21,6 +21,7 @@ backup_include_paths:
   - "/opt/services"
   - "/var/lib/homelab/monitoring/checks.json"
   - "/home/admin/projects"
+  - "/mnt/storage/media/photos/library"
 
 backup_exclude_patterns:
   - "/opt/services/*/data/*.sqlite3"
@@ -35,6 +36,11 @@ backup_exclude_patterns:
   - "*.tmp"
   - "/opt/services/*/backups/vaultwarden-backup-*.tar.gz"
   - "/opt/services/frigate/config/model_cache"
+  - "/opt/services/immich/data/postgres/**"
+  - "/opt/services/immich/data/thumbs/**"
+  - "/opt/services/immich/data/model-cache/**"
+  - "/mnt/storage/media/photos/upload/**"
+  - "/mnt/storage/media/photos/encoded-video/**"
   - "/mnt/scratch"
   - "/mnt/scratch/**"
   - "node_modules"

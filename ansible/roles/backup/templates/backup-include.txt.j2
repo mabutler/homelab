@@ -1,3 +1,6 @@
 {% for path in backup_include_paths %}
 {{ path }}
 {% endfor %}
+{% if '/mnt/storage/media/photos/library' not in backup_include_paths %}
+/mnt/storage/media/photos/library
+{% endif %}

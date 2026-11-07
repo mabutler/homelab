@@ -1,0 +1,36 @@
+---
+# Defaults for immich role
+
+immich_service_dir: "/opt/services/immich"
+immich_data_dir: "{{ immich_service_dir }}/data"
+immich_backup_dir: "{{ immich_service_dir }}/backups"
+immich_storage_dir: "/mnt/storage/media/photos"
+
+# Container Images and Versions
+immich_version: "v3.3.6"
+immich_server_image: "ghcr.io/immich-app/immich-server:{{ immich_version }}"
+immich_ml_image: "ghcr.io/immich-app/immich-machine-learning:{{ immich_version }}"
+immich_db_image: "ghcr.io/immich-app/postgres:16-vectorchord0.4.3-pgvectors0.2.0"
+immich_redis_image: "docker.io/redis:6.2-alpine"
+
+# User and Group IDs for process and file permissions
+immich_puid: 1000
+immich_pgid: 1001
+
+# Network & Ingress
+immich_port: 2283
+immich_host_bind: "0.0.0.0"
+
+# Database Configuration
+immich_db_user: "immich"
+immich_db_name: "immich"
+immich_db_pass: "{{ immich_db_password | default('CHANGE_ME_IN_VAULT') }}"
+
+# Hardware Acceleration (Intel Alder Lake UHD 770 iGPU)
+immich_igpu_render_device: "/dev/dri/by-path/pci-0000:00:02.0-render"
+immich_igpu_card_device: "/dev/dri/by-path/pci-0000:00:02.0-card"
+immich_libva_driver: "iHD"
+
+# System Integration Paths
+immich_caddy_dropin_path: "/etc/caddy/conf.d/30-immich.caddy"
+immich_backup_hook_path: "/etc/homelab/backup.d/30-immich.sh"

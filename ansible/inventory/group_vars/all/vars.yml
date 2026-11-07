@@ -104,6 +104,13 @@ frigate_snapshots_retain_days: 14
 frigate_camera_1_enabled: false
 frigate_camera_2_enabled: false
 
+# Immich Photo Management Platform (Phase 5)
+immich_port: 2283
+immich_host_bind: "0.0.0.0"
+immich_domain: "photos"
+immich_service_dir: "/opt/services/immich"
+immich_storage_dir: "/mnt/storage/media/photos"
+
 # Platform Monitoring & Alerting (Phase 8)
 monitoring_cooldown_sec: 900
 monitoring_disk_warn_pct: 85

@@ -285,10 +285,11 @@
 - name: Import Phase 5 Frigate Verification Playbook
   ansible.builtin.import_playbook: verify-phase5-frigate.yml
 
+- name: Import Phase 5 Immich Verification Playbook
+  ansible.builtin.import_playbook: verify-phase5-immich.yml
+
 - name: Import Feature 007 Antigravity Verification Playbook
   ansible.builtin.import_playbook: verify-phase7-antigravity.yml
 
 - name: Import Phase 8 Monitoring Verification Playbook
   ansible.builtin.import_playbook: verify-phase8-monitoring.yml
-
-

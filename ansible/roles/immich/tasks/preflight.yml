@@ -1,0 +1,59 @@
+---
+# Preflight checks for Immich Photo Management Platform
+
+- name: Check Docker service status
+  ansible.builtin.systemd:
+    name: docker
+    state: started
+  check_mode: true
+  register: immich_docker_service
+  failed_when: immich_docker_service.status.ActiveState != "active"
+
+- name: Check NVMe application storage directory (/opt/services)
+  ansible.builtin.stat:
+    path: /opt/services
+  register: immich_opt_services_stat
+
+- name: Assert /opt/services exists
+  ansible.builtin.assert:
+    that:
+      - immich_opt_services_stat.stat.exists
+      - immich_opt_services_stat.stat.isdir
+    fail_msg: "/opt/services does not exist or is not a directory."
+    success_msg: "/opt/services verified."
+
+- name: Check /mnt/storage mount status
+  ansible.builtin.command: mountpoint -q /mnt/storage
+  changed_when: false
+  register: immich_storage_mount
+
+- name: Assert /mnt/storage is a valid active mountpoint
+  ansible.builtin.assert:
+    that:
+      - immich_storage_mount.rc == 0
+    fail_msg: "/mnt/storage is not an active mountpoint. Ensure MergerFS pool is mounted before deploying Immich."
+    success_msg: "/mnt/storage is an active mountpoint."
+
+- name: Check Intel UHD Graphics 770 iGPU render device
+  ansible.builtin.stat:
+    path: "{{ immich_igpu_render_device }}"
+    follow: true
+  register: immich_igpu_render_stat
+
+- name: Check Intel UHD Graphics 770 iGPU card device
+  ansible.builtin.stat:
+    path: "{{ immich_igpu_card_device }}"
+    follow: true
+  register: immich_igpu_card_stat
+
+- name: Assert Intel UHD Graphics 770 iGPU devices exist
+  ansible.builtin.assert:
+    that:
+      - immich_igpu_render_stat.stat.exists
+      - immich_igpu_render_stat.stat.ischr
+      - immich_igpu_card_stat.stat.exists
+      - immich_igpu_card_stat.stat.ischr
+    fail_msg: >
+      Intel UHD Graphics 770 iGPU device paths ({{ immich_igpu_render_device }} or
+      {{ immich_igpu_card_device }}) do not exist or are not character devices.
+    success_msg: "Intel UHD Graphics 770 iGPU devices verified."

@@ -48,10 +48,33 @@ table {{ firewall_address_family | default('inet') }} {{ firewall_table_name | d
         ip saddr {{ subnet }} udp dport { {{ firewall_frigate_udp_ports | join(', ') }} } accept
 {% endfor %}
 {% endif %}
+
+        # 10. Allow Immich access from trusted management subnets
+{% if firewall_immich_tcp_ports | default([]) | length > 0 %}
+{% for subnet in firewall_allowed_subnets %}
+        ip saddr {{ subnet }} tcp dport { {{ firewall_immich_tcp_ports | join(', ') }} } accept
+{% endfor %}
+{% endif %}
     }
 
     chain forward {
         type filter hook forward priority filter; policy drop;
+
+        # 1. Allow established and related forwarded traffic
+        ct state established,related accept
+
+        # 2. Allow trusted LAN subnets to reach container bridge interfaces
+{% for subnet in firewall_allowed_subnets %}
+        ip saddr {{ subnet }} oifname "br-*" accept
+{% endfor %}
+
+        # 3. Allow Tailscale mesh traffic to reach container bridge interfaces
+        iifname "tailscale0" oifname "br-*" accept
+
+        # 4. Allow container bridge egress traffic
+        iifname "br-*" accept
+        iifname "docker0" accept
+        oifname "docker0" accept
     }
 
     chain output {

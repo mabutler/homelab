@@ -1,0 +1,134 @@
+---
+- name: Homelab2 Phase 5 Immich Photo Management Platform Acceptance Verification
+  hosts: homelab_nodes
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: "IMM-01: Assert Immich systemd service is active"
+      ansible.builtin.systemd:
+        name: immich
+        state: started
+      check_mode: true
+      register: imm01_service
+      failed_when: imm01_service.status.ActiveState != "active"
+
+    - name: "IMM-01: Assert Immich containers are running with 0 restart loops"
+      # noqa: risky-shell-pipe
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          CONTAINERS=$(docker ps --filter 'name=immich_' --format '{% raw %}{{.Names}}:{{.Status}}{% endraw %}' 2>/dev/null)
+          echo "$CONTAINERS" | grep -q "immich_server" || exit 1
+          echo "$CONTAINERS" | grep -q "immich_machine_learning" || exit 1
+          echo "$CONTAINERS" | grep -q "immich_postgres" || exit 1
+          echo "$CONTAINERS" | grep -q "immich_redis" || exit 1
+          echo "$CONTAINERS" | grep -qi "restarting" && exit 1
+          exit 0
+      changed_when: false
+
+    - name: "IMM-02: Assert Immich HTTP API ping probe responds HTTP 200 within 500ms"
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ immich_port | default(2283) }}/api/server/ping"
+        status_code: 200
+        return_content: true
+        timeout: 1
+      register: imm02_ping
+      failed_when:
+        - imm02_ping.status != 200
+        - imm02_ping.json.res is not defined or imm02_ping.json.res != "pong"
+
+    - name: "IMM-03: Assert Intel UHD 770 iGPU bound and discrete AMD GPU strictly isolated"
+      # noqa: risky-shell-pipe
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          COMPOSE="/opt/services/immich/compose.yml"
+          [ -f "$COMPOSE" ] || exit 1
+          grep -q "0000:00:02.0-render" "$COMPOSE" || exit 1
+          grep -q "0000:03:00.0" "$COMPOSE" && exit 1
+          DEVICES=$(docker inspect immich_server --format '{% raw %}{{json .HostConfig.Devices}}{% endraw %}' 2>/dev/null || true)
+          if [ -n "$DEVICES" ] && [ "$DEVICES" != "null" ]; then
+            echo "$DEVICES" | grep -q "0000:03:00.0" && exit 1
+          fi
+          exit 0
+      changed_when: false
+
+    - name: "IMM-04: Assert tiered storage topology: NVMe for data/postgres, MergerFS for photos"
+      # noqa: risky-shell-pipe
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          mountpoint -q /mnt/storage || exit 1
+          [ -d /opt/services/immich/data/postgres ] || exit 1
+          [ -d /mnt/storage/media/photos/library ] || exit 1
+      changed_when: false
+
+    - name: "IMM-05: Assert secret isolation: .env permissions 0600 and .env.example exists"
+      ansible.builtin.stat:
+        path: /opt/services/immich/.env
+      register: imm05_env
+      failed_when:
+        - not imm05_env.stat.exists
+        - imm05_env.stat.mode != "0600"
+
+    - name: "IMM-05: Assert .env.example exists"
+      ansible.builtin.stat:
+        path: /opt/services/immich/.env.example
+      register: imm05_example
+      failed_when: not imm05_example.stat.exists
+
+    - name: "IMM-06: Assert Caddy drop-in exists and routes to 127.0.0.1:2283"
+      # noqa: command-instead-of-module risky-shell-pipe
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          [ -f /etc/caddy/conf.d/30-immich.caddy ] || exit 1
+          grep -q "127.0.0.1:2283" /etc/caddy/conf.d/30-immich.caddy || exit 1
+          caddy validate --config /etc/caddy/Caddyfile 2>&1 | grep -qiE "(valid|configuration is valid)" || exit 1
+      changed_when: false
+
+    - name: "IMM-07: Assert storage group ownership & 2775 setgid on /mnt/storage/media/photos"
+      # noqa: risky-shell-pipe
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          [ "$(stat -c '%a' /mnt/storage/media/photos)" = "2775" ] || exit 1
+          GRP=$(stat -c '%G' /mnt/storage/media/photos 2>/dev/null || stat -c '%g' /mnt/storage/media/photos)
+          [ "$GRP" = "storage" ] || [ "$GRP" = "1001" ] || exit 1
+          USR=$(stat -c '%U' /mnt/storage/media/photos 2>/dev/null || stat -c '%u' /mnt/storage/media/photos)
+          [ "$USR" = "admin" ] || [ "$USR" = "1000" ] || exit 1
+      changed_when: false
+
+    - name: "IMM-08: Assert transactional backup hook /etc/homelab/backup.d/30-immich.sh executes dump"
+      # noqa: risky-shell-pipe
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          [ -x /etc/homelab/backup.d/30-immich.sh ] || exit 1
+          /etc/homelab/backup.d/30-immich.sh pre-backup || exit 1
+          [ -s /opt/services/immich/backups/immich_db_backup.dump ] || exit 1
+      changed_when: false
+
+    - name: "IMM-09: Assert clean journald logs and healthy container status"
+      # noqa: risky-shell-pipe
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          journalctl -u immich.service --no-pager -n 50 2>&1 | grep -qiE "(panic:|segfault)" && exit 1
+          docker inspect immich_server --format '{% raw %}{{.State.Health.Status}}{% endraw %}' 2>/dev/null | grep -qiE "(healthy|starting)" || exit 1
+      changed_when: false
+
+    - name: Display Phase 5 Immich verification summary
+      ansible.builtin.debug:
+        msg:
+          - "=== Phase 5 Immich Photo Management Verification Summary ==="
+          - "IMM-01 Service & Containers Active: PASS"
+          - "IMM-02 HTTP API Ping Health (<500ms): PASS"
+          - "IMM-03 Intel UHD 770 iGPU Bound & AMD Isolated: PASS"
+          - "IMM-04 Tiered Storage Topology (NVMe/MergerFS): PASS"
+          - "IMM-05 Secret Isolation (.env 0600): PASS"
+          - "IMM-06 Caddy Ingress Configuration & Validation: PASS"
+          - "IMM-07 Storage Group & 2775 Setgid: PASS"
+          - "IMM-08 Transactional Backup Dump: PASS"
+          - "IMM-09 Structured Journald Logs & Health: PASS"

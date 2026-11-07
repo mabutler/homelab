@@ -1,0 +1,18 @@
+---
+# Backup integration tasks for Immich Photo Management Platform
+
+- name: Ensure /etc/homelab/backup.d directory exists
+  ansible.builtin.file:
+    path: /etc/homelab/backup.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0750"
+
+- name: Deploy Immich transactional backup integration hook
+  ansible.builtin.template:
+    src: 30-immich.sh.j2
+    dest: "{{ immich_backup_hook_path | default('/etc/homelab/backup.d/30-immich.sh') }}"
+    owner: root
+    group: root
+    mode: "0755"

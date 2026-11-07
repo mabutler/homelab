@@ -1,0 +1,24 @@
+---
+# Systemd service unit management for Immich Photo Management Platform
+
+- name: Deploy Immich systemd service unit
+  ansible.builtin.template:
+    src: immich.service.j2
+    dest: /etc/systemd/system/immich.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload systemd
+  register: immich_unit_file
+
+- name: Force systemd daemon reload if unit file changed
+  # noqa: no-handler
+  ansible.builtin.systemd:
+    daemon_reload: true
+  when: immich_unit_file.changed
+
+- name: Enable and start Immich service
+  ansible.builtin.systemd:
+    name: immich
+    state: started
+    enabled: true

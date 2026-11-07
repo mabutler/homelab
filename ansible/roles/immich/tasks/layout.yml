@@ -1,0 +1,78 @@
+---
+# Directory layout and storage tier provisioning for Immich Photo Management Platform
+
+- name: Ensure Immich Tier 0 root service directory exists
+  ansible.builtin.file:
+    path: "{{ immich_service_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Ensure Immich Tier 0 data parent directory exists
+  ansible.builtin.file:
+    path: "{{ immich_data_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Ensure Immich Tier 0 PostgreSQL database directory exists with restricted mode (0700)
+  ansible.builtin.file:
+    path: "{{ immich_data_dir }}/postgres"
+    state: directory
+    owner: "999"
+    group: "999"
+    mode: "0700"
+
+- name: Ensure Immich Tier 0 thumbs directory exists
+  ansible.builtin.file:
+    path: "{{ immich_data_dir }}/thumbs"
+    state: directory
+    owner: "{{ immich_puid | default(1000) | string }}"
+    group: "{{ immich_pgid | default(1001) | string }}"
+    mode: "0755"
+
+- name: Ensure Immich Tier 0 model-cache directory exists
+  ansible.builtin.file:
+    path: "{{ immich_data_dir }}/model-cache"
+    state: directory
+    owner: "{{ immich_puid | default(1000) | string }}"
+    group: "{{ immich_pgid | default(1001) | string }}"
+    mode: "0755"
+
+- name: Ensure Immich Tier 0 profile directory exists
+  ansible.builtin.file:
+    path: "{{ immich_data_dir }}/profile"
+    state: directory
+    owner: "{{ immich_puid | default(1000) | string }}"
+    group: "{{ immich_pgid | default(1001) | string }}"
+    mode: "0755"
+
+- name: Ensure Immich Tier 0 backup staging directory exists
+  ansible.builtin.file:
+    path: "{{ immich_backup_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0750"
+
+- name: Ensure Immich Tier 1 MergerFS media parent directory exists
+  ansible.builtin.file:
+    path: "{{ immich_storage_dir }}"
+    state: directory
+    owner: "{{ admin_username | default('admin') }}"
+    group: "{{ storage_group | default('storage') }}"
+    mode: "2775"
+
+- name: Ensure Immich Tier 1 MergerFS subdirectories exist
+  ansible.builtin.file:
+    path: "{{ immich_storage_dir }}/{{ item }}"
+    state: directory
+    owner: "{{ admin_username | default('admin') }}"
+    group: "{{ storage_group | default('storage') }}"
+    mode: "2775"
+  loop:
+    - library
+    - upload
+    - encoded-video

@@ -180,17 +180,18 @@ Each planned workload brings distinct dependencies, storage placement, and expli
   - *Backup Confirmed*: Automated daily snapshot of configuration, custom components, and SQLite/Postgres DB via Restic/backup script.
   - *Telemetry Confirmed*: Container healthcheck active; systemd unit status verified; Home Assistant `/api/` health check endpoint responding; journald logging structured and monitored.
 
-### 4.2 Immich
+### 4.2 Immich *(Completed & Operational)*
 - **Role**: High-performance self-hosted photo and video management (Google Photos alternative).
 - **State & Storage**:
-  - **Database & Indices**: PostgreSQL with `pgvector`, Redis cache, thumbnails, and ML models on fast NVMe (`/opt/services/immich`).
-  - **Media Library**: Original full-resolution photos and videos on pooled MergerFS storage (`/mnt/storage/media/photos`).
+  - **Database & Indices**: PostgreSQL with `pgvector` (`pgvecto-rs:pg16-v0.2.1`), Redis `6.2-alpine` cache, pre-generated thumbnails, profile images, and ML models on fast NVMe (`/opt/services/immich`).
+  - **Media Library**: Original full-resolution photos and videos on pooled MergerFS storage (`/mnt/storage/media/photos`) with `admin:storage` (`PUID=1000`/`PGID=1001`) ownership and `2775` setgid permissions.
 - **Ramifications**:
-  - **Multi-Container Stack**: Immich Server, Immich Machine Learning, PostgreSQL + pgvector, and Redis.
-  - **Hardware Acceleration**: Video transcoding and ML image classification (CLIP, facial recognition, search) require GPU/iGPU passthrough (`/dev/dri` for Intel QuickSync or NVIDIA NVENC/CUDA).
+  - **Multi-Container Stack**: Immich Server (`v1.118.2`), Immich Machine Learning, PostgreSQL + pgvector, and Redis managed via Docker Compose and supervised by systemd (`immich.service`).
+  - **Hardware Acceleration**: Video decoding and transcoding bound to Intel Alder Lake UHD Graphics 770 iGPU (`/dev/dri/by-path/pci-0000:00:02.0-render`) with `LIBVA_DRIVER_NAME=iHD`; discrete AMD GPU strictly isolated.
+  - **Ingress & Security**: Bound strictly to `127.0.0.1:2283` on host loopback, routed via Caddy reverse proxy (`/etc/caddy/conf.d/30-immich.caddy`) with TLS and 50GB streaming request body buffer.
 - **Backup & Telemetry Gate**:
-  - *Backup Confirmed*: Automated periodic `pg_dump` of PostgreSQL (including pgvector embeddings) synchronized with photo volume snapshots.
-  - *Telemetry Confirmed*: Server ping endpoint (`/api/server/ping`) asserted; container healthchecks active; GPU transcoding hardware metric confirmed.
+  - *Backup Confirmed*: Automated transactional `pg_dump` backup hook (`/etc/homelab/backup.d/30-immich.sh`) generating verified custom-format dumps in `/opt/services/immich/backups/`. Captured by Restic into Backblaze B2 offsite repository, while transient thumbnails, model caches, and encoded videos are excluded.
+  - *Telemetry Confirmed*: Server ping probe (`/api/server/ping`) returning HTTP 200 within 500ms; container healthchecks active; journald telemetry logging without unhandled fatal errors; validated by 9-point acceptance suite (`scripts/verify-phase5-immich.sh`).
 
 ### 4.3 Frigate NVR
 - **Role**: Real-time CCTV Network Video Recorder with AI object detection (people, cars, animals).
@@ -375,7 +376,7 @@ flowchart LR
 - **Phase 5 Mandatory Per-Application Completion Gates**:
   - *Gate Policy*: **No application in Phase 5 may be marked complete until both its backup and telemetry criteria are independently verified:**
     1. **Home Assistant + ZWaveJS**: Backup (config + DB snapshot) & Telemetry (healthcheck, API endpoint, udev device tracking) confirmed.
-    2. **Immich**: Backup (`pg_dump` + photo library sync) & Telemetry (server ping, ML engine status, GPU transcode) confirmed.
+    2. **Immich** *(Completed)*: Backup (`pg_dump` hook `/etc/homelab/backup.d/30-immich.sh` + library sync) & Telemetry (server ping, iGPU hardware acceleration, 9-point acceptance matrix) confirmed.
     3. **Frigate NVR**: Backup (config + event DB; footage scratch excluded) & Telemetry (API health, Coral latency, stream FPS) confirmed.
     4. **Vaultwarden**: Backup (transactional SQLite `.backup` vacuum dump) & Telemetry (`/alive` endpoint, WebSocket health) confirmed.
     5. **FileBrowser**: Backup (DB + config) & Telemetry (web response, storage pool mount test) confirmed.

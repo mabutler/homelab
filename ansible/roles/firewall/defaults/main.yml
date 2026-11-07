@@ -24,3 +24,7 @@ firewall_frigate_tcp_ports:
   - 8555
 firewall_frigate_udp_ports:
   - 8555
+
+# Immich Photo Management Platform LAN-accessible port
+firewall_immich_tcp_ports:
+  - 2283

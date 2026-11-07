@@ -1,0 +1,19 @@
+---
+# Caddy reverse proxy ingress configuration for Immich Photo Management Platform
+
+- name: Ensure Caddy drop-in configuration directory exists
+  ansible.builtin.file:
+    path: /etc/caddy/conf.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Deploy Immich Caddy reverse proxy drop-in configuration
+  ansible.builtin.template:
+    src: 30-immich.caddy.j2
+    dest: "{{ immich_caddy_dropin_path | default('/etc/caddy/conf.d/30-immich.caddy') }}"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload caddy

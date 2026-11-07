@@ -131,3 +131,91 @@ Following verified cutover to the official Backblaze B2 bucket `fidelacchius-bac
    - Confirm all production snapshots are present in `fidelacchius-backups`.
    - Click **Bucket Settings** -> **Delete Bucket** (or remove residual test files then delete bucket).
 4. All backup operations and scheduled systemd timers now exclusively target `b2:fidelacchius-backups:fidelacchius`.
+
+---
+
+## 6. Immich Photo Management Platform
+
+### 6.1 Architecture & Ingress
+
+The Immich photo and video management platform is deployed as a containerized multi-service stack supervised by systemd (`immich.service`) located at `/opt/services/immich`.
+- **Services**: `immich-server` (`v1.118.2`), `immich-machine-learning`, `database` (`tensorchord/pgvecto-rs:pg16-v0.2.1`), and `redis` (`6.2-alpine`).
+- **Internal Loopback Binding**: `127.0.0.1:2283` (no direct external exposure).
+- **Reverse Proxy Ingress**: Fronted by Caddy (`/etc/caddy/conf.d/30-immich.caddy`) at:
+  - Local LAN: `https://photos.lan` (or configured `$HOMELAB_DOMAIN`)
+  - Tailscale VPN: `https://photos.fidelacchius.ts.net`
+  - Ingress Buffer: Configured with `max_size 50GB` for multi-gigabyte video uploads.
+
+### 6.2 Initial Admin Account Setup
+
+1. Open your browser and navigate to `https://photos.fidelacchius.ts.net` (while connected to Tailscale) or `http://photos.lan`.
+2. The initial setup screen will prompt you to create the administrator account (email, name, password).
+3. Complete onboarding by establishing default storage and display preferences.
+
+### 6.3 Mobile Application Configuration
+
+1. Install the official Immich app on iOS (App Store) or Android (Google Play / F-Droid).
+2. On first launch, enter the server URL:
+   - For remote / offsite synchronization: `https://photos.fidelacchius.ts.net` (ensure Tailscale client is active on device).
+   - For local synchronization: `https://photos.lan`.
+3. Log in using your user credentials.
+4. Enable background synchronization and grant photo library permissions.
+
+### 6.4 Storage Architecture & Permissions
+
+Immich operates across two distinct storage tiers:
+- **Tier 0 Fast NVMe** (`/opt/services/immich`):
+  - `compose.yml` and `.env` (mode `0600`)
+  - `data/postgres/`: PostgreSQL database cluster with `pgvector` embeddings (`999:999`, mode `0700`)
+  - `data/thumbs/`: Pre-generated image and video thumbnails (`1000:1001`, mode `0755`)
+  - `data/model-cache/`: Downloaded machine learning weights (`1000:1001`, mode `0755`)
+  - `data/profile/`: User profile images (`1000:1001`, mode `0755`)
+  - `backups/`: Transactional database dump staging (`root:root`, mode `0750`)
+- **Tier 1 Pooled Bulk Storage** (`/mnt/storage/media/photos`):
+  - `library/`: Primary full-resolution photo and video assets
+  - `upload/`: Temporary multipart upload staging buffer
+  - `encoded-video/`: Transcoded web video streaming cache
+  - Enforces `admin:storage` (`PUID=1000`/`PGID=1001`) ownership and `2775` setgid flags.
+
+### 6.5 Hardware Acceleration & iGPU Video Transcoding
+
+Hardware-accelerated video decoding and transcoding utilizes the host's Intel UHD Graphics 770 iGPU (`00:02.0`):
+- Stable device paths `/dev/dri/by-path/pci-0000:00:02.0-render` and `...-card` are passed into the `immich-server` container.
+- `LIBVA_DRIVER_NAME=iHD` is declared in the container environment.
+- The host's discrete AMD Radeon RX 6700 XT GPU is strictly isolated from the stack.
+
+### 6.6 Continuous Disaster Recovery & Backup Restoration
+
+Disaster recovery is orchestrated via `/etc/homelab/backup.d/30-immich.sh`:
+- **Pre-Backup Trigger**:
+  Executes transactional `pg_dump` within the PostgreSQL container, emitting a validated custom-format archive to `/opt/services/immich/backups/immich_db_backup.dump`.
+- **Restic Offsite Synchronization**:
+  Restic captures `/opt/services/immich` (configuration, credentials, database dump, profile images) and `/mnt/storage/media/photos/library` to Backblaze B2. Regenerable caches (`thumbs`, `model-cache`, `upload`, `encoded-video`, live `postgres` cluster) are excluded.
+- **Database Restoration Procedure**:
+  To restore the database cluster from a snapshot:
+  ```bash
+  # Ensure the container stack is active
+  systemctl start immich.service
+
+  # Execute restoration hook
+  sudo /etc/homelab/backup.d/30-immich.sh post-restore
+  ```
+
+### 6.7 Operational & Verification Commands
+
+```bash
+# Check systemd service status
+systemctl status immich.service
+
+# Restart the Immich stack
+sudo systemctl restart immich.service
+
+# View live container logs
+sudo docker compose -f /opt/services/immich/compose.yml logs -f
+
+# Run the 9-point acceptance verification suite
+./scripts/verify-phase5-immich.sh
+
+# Run acceptance verification with structured JSON output
+./scripts/verify-phase5-immich.sh --json
+```

@@ -1,3 +1,18 @@
 {% for pattern in backup_exclude_patterns %}
 {{ pattern }}
 {% endfor %}
+{% if '/opt/services/immich/data/postgres/**' not in backup_exclude_patterns %}
+/opt/services/immich/data/postgres/**
+{% endif %}
+{% if '/opt/services/immich/data/thumbs/**' not in backup_exclude_patterns %}
+/opt/services/immich/data/thumbs/**
+{% endif %}
+{% if '/opt/services/immich/data/model-cache/**' not in backup_exclude_patterns %}
+/opt/services/immich/data/model-cache/**
+{% endif %}
+{% if '/mnt/storage/media/photos/upload/**' not in backup_exclude_patterns %}
+/mnt/storage/media/photos/upload/**
+{% endif %}
+{% if '/mnt/storage/media/photos/encoded-video/**' not in backup_exclude_patterns %}
+/mnt/storage/media/photos/encoded-video/**
+{% endif %}

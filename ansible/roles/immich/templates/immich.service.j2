@@ -1,0 +1,19 @@
+[Unit]
+Description=Immich Photo Management Platform (Docker Compose)
+Requires=docker.service local-fs.target
+After=docker.service network-online.target local-fs.target
+Wants=network-online.target
+RequiresMountsFor=/opt/services /mnt/storage
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory={{ immich_service_dir | default('/opt/services/immich') }}
+ExecStart=/usr/bin/docker compose up -d --remove-orphans
+ExecStop=/usr/bin/docker compose down
+ExecReload=/usr/bin/docker compose up -d --remove-orphans
+TimeoutStartSec=300
+TimeoutStopSec=90
+
+[Install]
+WantedBy=multi-user.target
