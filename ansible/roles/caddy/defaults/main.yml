@@ -8,3 +8,4 @@ caddy_service_state: "started"
 caddy_service_enabled: true
 caddy_manage_vaultwarden: false
 caddy_enable_wildcard_443: false
+caddy_default_bind: "127.0.0.1 192.168.4.57"
