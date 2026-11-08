@@ -36,3 +36,8 @@ frigate_snapshots_retain_days: 14
 # Camera activation flags (pre-arrival defaults to false)
 frigate_camera_1_enabled: false
 frigate_camera_2_enabled: false
+
+# Detection parameters
+frigate_detect_width: 704
+frigate_detect_height: 480
+frigate_detect_fps: 5

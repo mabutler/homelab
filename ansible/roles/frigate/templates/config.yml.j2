@@ -22,9 +22,9 @@ ffmpeg:
 
 detect:
   enabled: true
-  width: 1280
-  height: 720
-  fps: 5
+  width: {{ frigate_detect_width | default(704) }}
+  height: {{ frigate_detect_height | default(480) }}
+  fps: {{ frigate_detect_fps | default(5) }}
 
 objects:
   track:
