@@ -124,7 +124,7 @@ echo "Restic restore completed successfully."
 # Permissions enforcement
 RESOLVED_TARGET="$(cd "$TARGET_DIR" 2>/dev/null && pwd || echo "$TARGET_DIR")"
 
-# Fix /etc/homelab/vault.yml permissions
+# Fix /etc/homelab/vault.yml permissions and sync to repo inventory if restoring to /
 VAULT_CANDIDATE="$RESOLVED_TARGET/etc/homelab/vault.yml"
 if [[ "$RESOLVED_TARGET" == "/" ]]; then
     VAULT_CANDIDATE="/etc/homelab/vault.yml"
@@ -136,46 +136,53 @@ if [[ -f "$VAULT_CANDIDATE" ]]; then
         chown root:root "$VAULT_CANDIDATE"
     fi
     echo "Enforced permissions 0600 on $VAULT_CANDIDATE"
+
+    if [[ "$RESOLVED_TARGET" == "/" ]]; then
+        for repo_dir in /home/admin/projects/homelab2 /home/admin/homelab2 /opt/homelab2; do
+            if [[ -d "$repo_dir/ansible/inventory/group_vars/all" ]] && [[ ! -f "$repo_dir/ansible/inventory/group_vars/all/vault.yml" ]]; then
+                cp "$VAULT_CANDIDATE" "$repo_dir/ansible/inventory/group_vars/all/vault.yml"
+                chmod 0600 "$repo_dir/ansible/inventory/group_vars/all/vault.yml"
+                if [[ $(id -u) -eq 0 ]] && id admin >/dev/null 2>&1; then
+                    chown admin:users "$repo_dir/ansible/inventory/group_vars/all/vault.yml" 2>/dev/null || chown admin:admin "$repo_dir/ansible/inventory/group_vars/all/vault.yml" || true
+                fi
+                echo "Synced restored vault.yml to $repo_dir/ansible/inventory/group_vars/all/vault.yml"
+            fi
+        done
+    fi
 fi
 
-# Fix /opt/services/*/data permissions
+# Fix /opt/services/vaultwarden/data permissions
 SERVICES_DIR="$RESOLVED_TARGET/opt/services"
 if [[ "$RESOLVED_TARGET" == "/" ]]; then
     SERVICES_DIR="/opt/services"
 fi
 
-if [[ -d "$SERVICES_DIR" ]]; then
-    for app_dir in "$SERVICES_DIR"/*; do
-        if [[ -d "$app_dir/data" ]]; then
-            chmod -R 0700 "$app_dir/data"
-            if [[ $(id -u) -eq 0 ]]; then
-                chown -R 1000:1000 "$app_dir/data"
-            fi
-            echo "Enforced permissions 0700 1000:1000 on $app_dir/data"
-        fi
-    done
+if [[ -d "$SERVICES_DIR/vaultwarden/data" ]]; then
+    chmod -R 0700 "$SERVICES_DIR/vaultwarden/data"
+    if [[ $(id -u) -eq 0 ]]; then
+        chown -R 1000:1000 "$SERVICES_DIR/vaultwarden/data"
+    fi
+    echo "Enforced permissions 0700 1000:1000 on $SERVICES_DIR/vaultwarden/data"
 fi
 
-# Post-restore hook execution
-HOOK_DIR="$RESOLVED_TARGET/etc/homelab/backup.d"
+# Post-restore hook execution (only when restoring to system root /)
 if [[ "$RESOLVED_TARGET" == "/" ]]; then
     HOOK_DIR="/etc/homelab/backup.d"
-fi
-
-if [[ -d "$HOOK_DIR" ]]; then
-    shopt -s nullglob
-    HOOKS=("$HOOK_DIR"/*.sh)
-    shopt -u nullglob
-    if [[ ${#HOOKS[@]} -gt 0 ]]; then
-        echo "Executing post-restore hooks in $HOOK_DIR..."
-        for hook in "${HOOKS[@]}"; do
-            if [[ -x "$hook" ]]; then
-                echo "Running hook: $hook post-restore"
-                "$hook" post-restore || {
-                    echo "WARNING: Hook $hook post-restore failed with exit code $?" >&2
-                }
-            fi
-        done
+    if [[ -d "$HOOK_DIR" ]]; then
+        shopt -s nullglob
+        HOOKS=("$HOOK_DIR"/*.sh)
+        shopt -u nullglob
+        if [[ ${#HOOKS[@]} -gt 0 ]]; then
+            echo "Executing post-restore hooks in $HOOK_DIR..."
+            for hook in "${HOOKS[@]}"; do
+                if [[ -x "$hook" ]]; then
+                    echo "Running hook: $hook post-restore"
+                    "$hook" post-restore || {
+                        echo "WARNING: Hook $hook post-restore failed with exit code $?" >&2
+                    }
+                fi
+            done
+        fi
     fi
 fi
 

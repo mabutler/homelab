@@ -7,7 +7,7 @@
     state: directory
     owner: root
     group: root
-    mode: "0750"
+    mode: "0755"
 
 - name: Ensure /etc/homelab/apps configuration directory exists
   ansible.builtin.file:

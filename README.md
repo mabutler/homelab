@@ -60,6 +60,10 @@ Resilient, declarative-first personal server platform hosted on bare-metal node 
 
 ## Governance & Documentation
 
+- [Full Bare-Metal Disaster Recovery & Restore Runbook](docs/full-restore-runbook.md)
+- [Operational Runbook (Antigravity & Immich)](docs/operations.md)
+- [Backblaze B2 Backup & Restore Quickstart](specs/006-backblaze-backup-restore/quickstart.md)
+- [Phase 1 Bare-Metal Arch Installer Guide](scripts/install/README.md)
 - [Roadmap & Vision](ROADMAP.md)
 - [Constitution](.specify/memory/constitution.md)
 - [Vaultwarden Feature Specification](specs/005-vaultwarden-app/spec.md)
