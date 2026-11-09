@@ -412,6 +412,7 @@ flowchart LR
 - **Key Deliverables**:
   - Centralized telemetry dashboard (e.g., Grafana / VictoriaMetrics or lightweight alternative).
   - Dead-man switch / healthcheck notifications (e.g., Healthchecks.io) for backup runs, parity syncs, and system health.
+  - **Restic Encryption Password Rotation**: Rotate `vault_restic_password` on `b2:fidelacchius-backups:fidelacchius` (`restic key add` / `restic key remove`), update `vault.yml` and `/etc/homelab/backup.env`, and validate non-destructive restore (`BK-008`).
   - Pinned repository package versions and annual major upgrade playbooks with rollback verification.
 - **Phase 8 Completion Gates**:
   - *Backup Gate*: Dashboard definitions and alert rules committed to version control.
