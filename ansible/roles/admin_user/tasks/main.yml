@@ -16,6 +16,8 @@
     shell: "{{ admin_shell }}"
     groups: "{{ admin_groups }}"
     append: true
+    password: "{{ vault_admin_password_hash | default(omit, true) }}"
+    update_password: always
     state: present
     create_home: true
   tags:

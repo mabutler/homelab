@@ -5,6 +5,10 @@
   ansible.builtin.stat:
     path: "{{ antigravity_ssh_key_path }}"
   register: target_ssh_key
+  tags:
+    - antigravity
+    - workspace
+    - ssh
 
 - name: Check for local controller seed deploy key
   ansible.builtin.stat:
@@ -17,11 +21,19 @@
   become: false
   register: local_ssh_stat
   when: not target_ssh_key.stat.exists
+  tags:
+    - antigravity
+    - workspace
+    - ssh
 
 - name: Determine first available local deploy key
   ansible.builtin.set_fact:
     available_local_ssh_key: "{{ (local_ssh_stat.results | default([]) | selectattr('stat.exists', 'defined') | selectattr('stat.exists', 'equalto', true) | map(attribute='item') | list | first) | default('') }}"
   when: not target_ssh_key.stat.exists
+  tags:
+    - antigravity
+    - workspace
+    - ssh
 
 - name: Deploy seeded GitHub deploy key to target host
   ansible.builtin.copy:

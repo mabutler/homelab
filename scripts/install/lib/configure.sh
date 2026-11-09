@@ -102,6 +102,9 @@ configure_admin_user() {
         arch-chroot "$mount_root" usermod -aG wheel -s "$user_shell" "$admin_user" >> "$INSTALL_LOG" 2>&1
     fi
 
+    # Set local console fallback password for admin_user (SSH password auth remains disabled)
+    echo "${admin_user}:admin" | arch-chroot "$mount_root" chpasswd >> "$INSTALL_LOG" 2>&1 || true
+
     # Lock root password for headless security
     arch-chroot "$mount_root" passwd -l root >> "$INSTALL_LOG" 2>&1 || true
 
