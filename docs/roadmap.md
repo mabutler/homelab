@@ -376,9 +376,11 @@ flowchart LR
 - **Phase 5 Mandatory Per-Application Completion Gates**:
   - *Gate Policy*: **No application in Phase 5 may be marked complete until both its backup and telemetry criteria are independently verified:**
     1. **Home Assistant + ZWaveJS**: Backup (config + DB snapshot) & Telemetry (healthcheck, API endpoint, udev device tracking) confirmed.
-    2. **Immich** *(Completed)*: Backup (`pg_dump` hook `/etc/homelab/backup.d/30-immich.sh` + library sync) & Telemetry (server ping, iGPU hardware acceleration, 9-point acceptance matrix) confirmed.
+    2. **Immich** *(Completed - Finalization In Progress)*: Backup (`pg_dump` hook `/etc/homelab/backup.d/30-immich.sh` + library sync) & Telemetry (server ping, iGPU hardware acceleration, 9-point acceptance matrix) confirmed.
+       - *Finalize Immich Setup*: Rebuild thumbnail cache via background jobs, index CLIP smart search and facial recognition across restored assets, and pair mobile applications for camera roll backup.
     3. **Frigate NVR**: Backup (config + event DB; footage scratch excluded) & Telemetry (API health, Coral latency, stream FPS) confirmed.
-    4. **Vaultwarden**: Backup (transactional SQLite `.backup` vacuum dump) & Telemetry (`/alive` endpoint, WebSocket health) confirmed.
+    4. **Vaultwarden** *(Completed - Production Migration In Progress)*: Backup (transactional SQLite `.backup` vacuum dump) & Telemetry (`/alive` endpoint, WebSocket health) confirmed.
+       - *Migrate Bitwarden*: Export production vault from Bitwarden, import items/attachments into self-hosted Vaultwarden, point browser extensions and mobile clients to `https://fidelacchius.fable-mackarel.ts.net/`, and verify Restic backup captures updated database.
     5. **FileBrowser**: Backup (DB + config) & Telemetry (web response, storage pool mount test) confirmed.
     6. **Mealie**: Backup (recipe JSON / DB dump) & Telemetry (HTTP 200 health endpoint) confirmed.
     7. **Vikunja**: Backup (DB dump + attachments) & Telemetry (`/api/v1/info` endpoint) confirmed.

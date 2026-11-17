@@ -85,7 +85,7 @@ test_restore_fn() {
     mkdir -p "$target"
 
     local script_path=""
-    for s in /usr/local/bin/restore-from-b2.sh /tmp/restore-from-b2.sh ./scripts/restore-from-b2.sh /opt/homelab2/scripts/restore-from-b2.sh; do
+    for s in ./scripts/restore-from-b2.sh /tmp/restore-from-b2.sh /usr/local/bin/restore-from-b2.sh /opt/homelab2/scripts/restore-from-b2.sh; do
         if [ -x "$s" ] || [ -f "$s" ]; then
             script_path="$s"
             break
@@ -109,6 +109,130 @@ test_restore_fn() {
 }
 run_assertion "BK-008" "Non-Destructive Restore Viability" "test_restore_fn"
 
+# BK-009: Stage 1 Dry-Run Path Filtering
+# shellcheck disable=SC2329
+test_stage1_dry_run_fn() {
+    local script_path=""
+    for s in ./scripts/restore-from-b2.sh /tmp/restore-from-b2.sh /usr/local/bin/restore-from-b2.sh /opt/homelab2/scripts/restore-from-b2.sh; do
+        if [ -x "$s" ] || [ -f "$s" ]; then
+            script_path="$s"
+            break
+        fi
+    done
+
+    if [ -z "$script_path" ]; then
+        echo "restore-from-b2.sh not found" >&2
+        return 1
+    fi
+
+    local out=""
+    out=$("$script_path" --stage config --dry-run 2>&1) || return 1
+    echo "$out" | grep -F "etc/homelab/vault.yml" >/dev/null || return 1
+    ! echo "$out" | grep -E '(^|/)mnt/storage' >/dev/null
+}
+run_assertion "BK-009" "Stage 1 Dry-Run Path Filtering" "test_stage1_dry_run_fn"
+
+# BK-010: Stage 2 Unmounted Storage Guard
+# shellcheck disable=SC2329
+test_stage2_unmounted_guard_fn() {
+    local target="/tmp/b2-unmounted-test"
+    rm -rf "$target"
+    mkdir -p "$target"
+
+    local script_path=""
+    for s in ./scripts/restore-from-b2.sh /tmp/restore-from-b2.sh /usr/local/bin/restore-from-b2.sh /opt/homelab2/scripts/restore-from-b2.sh; do
+        if [ -x "$s" ] || [ -f "$s" ]; then
+            script_path="$s"
+            break
+        fi
+    done
+
+    if [ -z "$script_path" ]; then
+        echo "restore-from-b2.sh not found" >&2
+        rm -rf "$target"
+        return 1
+    fi
+
+    local err_out=""
+    local rc=0
+    err_out=$("$script_path" --stage data --target-dir "$target" --force 2>&1) || rc=$?
+    rm -rf "$target"
+
+    [ "$rc" -eq 1 ] && echo "$err_out" | grep -q "CRITICAL: Storage mountpoint"
+}
+run_assertion "BK-010" "Stage 2 Unmounted Storage Guard" "test_stage2_unmounted_guard_fn"
+
+# BK-011: Invalid Stage Argument Rejection
+# shellcheck disable=SC2329
+test_invalid_stage_fn() {
+    local script_path=""
+    for s in ./scripts/restore-from-b2.sh /tmp/restore-from-b2.sh /usr/local/bin/restore-from-b2.sh /opt/homelab2/scripts/restore-from-b2.sh; do
+        if [ -x "$s" ] || [ -f "$s" ]; then
+            script_path="$s"
+            break
+        fi
+    done
+
+    if [ -z "$script_path" ]; then
+        echo "restore-from-b2.sh not found" >&2
+        return 1
+    fi
+
+    local rc=0
+    "$script_path" --stage invalid --dry-run >/dev/null 2>&1 || rc=$?
+    [ "$rc" -eq 1 ]
+}
+run_assertion "BK-011" "Invalid Stage Argument Rejection" "test_invalid_stage_fn"
+
+# BK-012: Stage 1 Non-Destructive Bootstrap Restore
+# shellcheck disable=SC2329
+test_stage1_rehearsal_fn() {
+    local target="/tmp/b2-stage1-test"
+    rm -rf "$target"
+    mkdir -p "$target"
+
+    local script_path=""
+    for s in ./scripts/restore-from-b2.sh /tmp/restore-from-b2.sh /usr/local/bin/restore-from-b2.sh /opt/homelab2/scripts/restore-from-b2.sh; do
+        if [ -x "$s" ] || [ -f "$s" ]; then
+            script_path="$s"
+            break
+        fi
+    done
+
+    if [ -z "$script_path" ]; then
+        echo "restore-from-b2.sh not found" >&2
+        rm -rf "$target"
+        return 1
+    fi
+
+    local out=""
+    out=$("$script_path" --stage 1 --target-dir "$target" --include-path etc/homelab/vault.yml --force 2>&1) || {
+        rm -rf "$target"
+        return 1
+    }
+
+    local mode=""
+    mode=$(stat -c "%a" "$target/etc/homelab/vault.yml" 2>/dev/null || echo "")
+    if [ "$mode" != "600" ]; then
+        rm -rf "$target"
+        return 1
+    fi
+
+    if [ -e "$target/mnt/storage" ]; then
+        rm -rf "$target"
+        return 1
+    fi
+
+    if echo "$out" | grep -i "post-restore hooks" >/dev/null; then
+        rm -rf "$target"
+        return 1
+    fi
+
+    rm -rf "$target"
+    return 0
+}
+run_assertion "BK-012" "Stage 1 Non-Destructive Bootstrap Restore" "test_stage1_rehearsal_fn"
+
 END_TIME=$(date +%s%3N 2>/dev/null || python3 -c 'import time; print(int(time.time()*1000))')
 TOTAL_DUR=$((END_TIME - START_TIME))
 TOTAL=$((PASSED + FAILED))
@@ -118,7 +242,7 @@ if [[ "$JSON_MODE" == true ]]; then
     cat << EOF
 {
   "timestamp": "$(date -Iseconds)",
-  "feature": "006-backblaze-backup-restore",
+  "feature": "014-staged-b2-restore",
   "target": "fidelacchius",
   "summary": {
     "total": $TOTAL,

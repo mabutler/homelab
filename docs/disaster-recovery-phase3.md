@@ -20,11 +20,12 @@ Because all configurations are declarative and tracked in Git, and all secrets (
 1. **Bare-Metal Base OS Online**:
    - Clean Arch Linux installation running with administrative user `admin` and passwordless sudo access (established via Phase 1 installer and Phase 2 hardening).
    - Reachable via local management network at `192.168.4.57` with SSH public key authentication.
-2. **Operator Workstation with Master Age Key**:
+2. **Operator Workstation with Master Age Key or Backblaze B2 Bootstrap**:
    - The operator's master age private key (`age10ct0eazlhgfjy7ezt7sffprjzs0tjhzpr0wngkmjdf9x5d4z9s5qx6jn6c`) available at:
      - Linux/macOS: `~/.config/sops/age/keys.txt`
      - Windows: `$env:USERPROFILE\.config\sops\age\keys.txt` or `$env:SOPS_AGE_KEY_FILE`
      - Physical paper/QR code backup (refer to [docs/recovery/age-key-backup.md](file:///C:/Users/micro/projects/homelab2/docs/recovery/age-key-backup.md))
+   - Alternatively, if bootstrapping on a clean Arch Linux target host without prior local keys, execute **Stage 1 Disaster Recovery** (`scripts/restore-from-b2.sh --stage config --target-dir / --force` or `scripts/restore-from-b2.ps1 -Stage config`) to extract `/etc/homelab/vault.yml`, sync it directly to `ansible/inventory/group_vars/all/vault.yml`, and restore SSH deploy keys without requiring bulk storage mounts. Refer to [Full Restore Runbook](full-restore-runbook.md) for the complete multi-stage workflow.
 
 ---
 

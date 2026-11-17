@@ -43,6 +43,9 @@ Resilient, declarative-first personal server platform hosted on bare-metal node 
 ### Acceptance Verification
 
 ```powershell
+# Run Backup & Staged Disaster Recovery acceptance suite (12-point matrix BK-001 through BK-012):
+./scripts/verify-phase5-backup.ps1 -TargetHost 192.168.4.57 -User admin
+
 # Run Immich acceptance test suite (9-point matrix):
 ./scripts/verify-phase5-immich.ps1 -TargetHost 192.168.4.57 -User admin
 
@@ -51,6 +54,12 @@ Resilient, declarative-first personal server platform hosted on bare-metal node 
 ```
 
 ```bash
+# Run Backup & Staged Disaster Recovery acceptance suite on target host:
+sudo ./scripts/verify-phase5-backup.sh
+
+# Run structured JSON report:
+sudo ./scripts/verify-phase5-backup.sh --json
+
 # Run Immich acceptance test suite on target host or via SSH:
 ./scripts/verify-phase5-immich.sh
 
@@ -58,14 +67,29 @@ Resilient, declarative-first personal server platform hosted on bare-metal node 
 ./scripts/verify-phase5-immich.sh --json
 ```
 
+### Staged Disaster Recovery Tooling
+
+Bare-metal disaster recovery from Backblaze B2 is decoupled into automated stages to prevent bare-metal dependency loops and eliminate root NVMe disk leakage:
+
+- **Stage 1 (Bootstrap & Secrets)**: Restores `/etc/homelab/vault.yml`, SSH keys, and project repos on clean hardware, syncs `vault.yml` to the Ansible inventory, and strictly excludes `/mnt/storage`:
+  ```bash
+  sudo -E ./scripts/restore-from-b2.sh --stage config --target-dir / --force
+  ```
+- **Inter-Stage Platform Convergence**: Run `ansible-playbook -i inventory/hosts.yml playbooks/site.yml --connection=local` to partition and mount the MergerFS storage pool at `/mnt/storage` and configure Docker.
+- **Stage 2 (Bulk Data & Database Hooks)**: Enforces active mountpoint verification (`mountpoint -q /mnt/storage`) to prevent NVMe leakage, restores `/opt/services` and `/mnt/storage/media/photos`, starts container services, and executes post-restore database hooks:
+  ```bash
+  sudo -E ./scripts/restore-from-b2.sh --stage data --target-dir / --force
+  ```
+- **Workstation Orchestration**: Run remotely from Windows/Linux operator workstations:
+  ```powershell
+  ./scripts/restore-from-b2.ps1 -HostAddress 192.168.4.57 -User admin -Stage config -Force
+  ./scripts/restore-from-b2.ps1 -HostAddress 192.168.4.57 -User admin -Stage data -Force
+  ```
+
 ## Governance & Documentation
 
 - [Full Bare-Metal Disaster Recovery & Restore Runbook](docs/full-restore-runbook.md)
 - [Operational Runbook (Antigravity & Immich)](docs/operations.md)
-- [Backblaze B2 Backup & Restore Quickstart](specs/006-backblaze-backup-restore/quickstart.md)
 - [Phase 1 Bare-Metal Arch Installer Guide](scripts/install/README.md)
 - [Roadmap & Vision](ROADMAP.md)
 - [Constitution](.specify/memory/constitution.md)
-- [Vaultwarden Feature Specification](specs/005-vaultwarden-app/spec.md)
-- [Vaultwarden Implementation Plan](specs/005-vaultwarden-app/plan.md)
-- [Quickstart & Operational Runbook](specs/005-vaultwarden-app/quickstart.md)

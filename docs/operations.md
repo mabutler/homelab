@@ -72,7 +72,7 @@ When executing tasks via Remote Control:
 
 ## 4. Deployment & Verification Orchestration
 
-### 4.1 Deployment (Enforces FR-011 Safety Guard)
+### 4.1 Deployment (Enforces Safety Guard)
 
 From workstation (PowerShell):
 ```powershell
@@ -112,13 +112,39 @@ Authentication profiles and settings are automatically included in daily Backbla
 
 Ephemeral caches, model files, crash telemetry, and Git databases are excluded to avoid backup bloat.
 
-### 5.2 Recovery Procedure
-1. Run `scripts/restore-from-b2.sh` to extract the latest snapshot.
-2. Re-apply the deployment playbook:
+### 5.2 Staged Disaster Recovery Procedure
+Bare-metal and selective disaster recovery is orchestrated using the staged recovery CLI (`scripts/restore-from-b2.sh` and `scripts/restore-from-b2.ps1`):
+
+1. **Stage 1 (`--stage config` or `--stage 1`) - System Bootstrap & Secrets**:
+   Run on a fresh Arch Linux install **before** Ansible convergence:
    ```bash
-   ./scripts/apply-phase7-antigravity.sh --confirm-target-ready
+   sudo -E ./scripts/restore-from-b2.sh --stage config --target-dir / --force
    ```
-3. The daemon starts immediately with existing credentials without requiring interactive browser OAuth.
+   - Restores `/etc/homelab` (`vault.yml`, `backup.env`, `monitoring.env` at `0600 root:root`).
+   - Automatically synchronizes `/etc/homelab/vault.yml` to `<repo>/ansible/inventory/group_vars/all/vault.yml` (`0600 admin`).
+   - Restores `/home/admin/.ssh` (`0700/0600`), `/home/admin/.gemini` (`0700/0600`), and `/home/admin/projects` (`admin:users`).
+   - Strictly excludes `/mnt/storage` and skips post-restore hooks so no storage or container runtimes are required.
+
+2. **Inter-Stage Platform Convergence**:
+   Run the master Ansible playbook (`ansible-playbook -i inventory/hosts.yml playbooks/site.yml --connection=local`) to configure Docker, network ingress, and partition/mount the MergerFS pool at `/mnt/storage`.
+
+3. **Stage 2 (`--stage data` or `--stage 2`) - Bulk Data, Containers & Database Hooks**:
+   Run after `site.yml` has configured storage and Docker:
+   ```bash
+   sudo -E ./scripts/restore-from-b2.sh --stage data --target-dir / --force
+   ```
+   - **Mountpoint Leakage Guard**: Validates `mountpoint -q /mnt/storage`. If unmounted, immediately halts with exit code `1` and emits a `CRITICAL` error to prevent multi-gigabyte media leakage onto the root NVMe drive.
+   - Restores `/opt/services` (Vaultwarden, Frigate, Immich) with `0700 1000:1000` / `0600` permissions.
+   - Restores `/mnt/storage/media/photos` with `2775 admin:storage` permissions.
+   - Automatically starts `docker.service` and application units, then executes all database hooks in `/etc/homelab/backup.d/*.sh post-restore`.
+
+4. **Remote Workstation Orchestration**:
+   The PowerShell wrapper supports `-Stage` across all phases:
+   ```powershell
+   ./scripts/restore-from-b2.ps1 -HostAddress 192.168.4.57 -User admin -Stage config -Force
+   ./scripts/restore-from-b2.ps1 -HostAddress 192.168.4.57 -User admin -Stage data -Force
+   ```
+   For detailed end-to-end bare-metal restoration workflows, refer to the [Full Restore Runbook](full-restore-runbook.md).
 
 ### 5.3 Legacy Test Bucket & Application Key Retirement
 Following verified cutover to the official Backblaze B2 bucket `fidelacchius-backups` (`b2:fidelacchius-backups:fidelacchius`):

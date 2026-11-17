@@ -4,13 +4,15 @@
 .DESCRIPTION
     Extracts Backblaze B2 and Restic bootstrap credentials from local inventory
     if not explicitly passed, connects to the target Linux host over SSH, and executes
-    scripts/restore-from-b2.sh to restore secrets and application datasets.
+    scripts/restore-from-b2.sh to restore secrets and application datasets across staged recovery phases.
 .PARAMETER HostAddress
     Target IP address or hostname (default: 192.168.4.57).
 .PARAMETER User
     Remote administrative SSH username (default: admin).
 .PARAMETER IdentityFile
     Path to private SSH key for authentication.
+.PARAMETER Stage
+    Disaster recovery restoration stage: config (or 1), data (or 2), or all (default: all).
 .PARAMETER AccountId
     Backblaze B2 Application Key ID.
 .PARAMETER AccountKey
@@ -35,6 +37,8 @@ param(
     [string]$HostAddress = "192.168.4.57",
     [string]$User = "admin",
     [string]$IdentityFile = "",
+    [ValidateSet("config", "1", "data", "2", "all")]
+    [string]$Stage = "all",
     [string]$AccountId = "",
     [string]$AccountKey = "",
     [string]$Repository = "",
@@ -82,6 +86,7 @@ if ($IdentityFile) {
 
 Write-Host "=== fidelacchius Disaster Recovery Orchestrator ===" -ForegroundColor Cyan
 Write-Host "Target Host : $User@$HostAddress"
+Write-Host "Stage       : $Stage"
 Write-Host "Snapshot    : $Snapshot"
 Write-Host "Target Dir  : $TargetDir"
 if ($IncludePath) { Write-Host "Include     : $IncludePath" }
@@ -107,6 +112,7 @@ if ($LASTEXITCODE -ne 0) {
 
 # 3. Construct remote execution command
 $flags = @()
+$flags += "--stage '$Stage'"
 $flags += "--snapshot '$Snapshot'"
 $flags += "--target-dir '$TargetDir'"
 if ($IncludePath) { $flags += "--include-path '$IncludePath'" }

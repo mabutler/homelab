@@ -29,7 +29,7 @@
   ansible.builtin.stat:
     path: "{{ inventory_dir }}/group_vars/all/vault.yml"
   delegate_to: localhost
-  register: local_vault_stat
+  register: backup_local_vault_stat
 
 - name: Deploy /etc/homelab/vault.yml from local inventory
   ansible.builtin.copy:
@@ -38,7 +38,7 @@
     owner: root
     group: root
     mode: "0600"
-  when: local_vault_stat.stat.exists
+  when: backup_local_vault_stat.stat.exists
 
 - name: Ensure /etc/homelab/vault.yml permissions are 0600
   ansible.builtin.file:
@@ -46,7 +46,7 @@
     owner: root
     group: root
     mode: "0600"
-  when: not local_vault_stat.stat.exists
+  when: not backup_local_vault_stat.stat.exists
   failed_when: false
 
 - name: Deploy backup inclusion manifest

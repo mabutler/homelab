@@ -2,8 +2,8 @@
 .SYNOPSIS
     Workstation verification runner for homelab2 Phase 5 Backup & Disaster Recovery.
 .DESCRIPTION
-    Uploads and executes the 8 automated backup acceptance assertions on the target host
-    over SSH and outputs results in human-readable or JSON format.
+    Uploads and executes the 12 automated backup and staged disaster recovery acceptance assertions
+    (BK-001 through BK-012) on the target host over SSH and outputs results in human-readable or JSON format.
 .PARAMETER TargetHost
     Target IP address or hostname (default: 192.168.4.57).
 .PARAMETER User
@@ -32,7 +32,7 @@ if ($IdentityFile) {
 }
 
 if (-not $Json) {
-    Write-Host "=== fidelacchius Phase 5 Backup Acceptance Verification Runner ===" -ForegroundColor Cyan
+    Write-Host "=== fidelacchius Phase 5 Backup & Staged Disaster Recovery Acceptance Verification Runner ===" -ForegroundColor Cyan
     Write-Host "Target Host : $User@$TargetHost"
 }
 

@@ -33,6 +33,7 @@
     - name: "BK-004: Assert /etc/homelab/vault.yml is included in latest snapshot"
       ansible.builtin.shell:
         cmd: |
+          set -euo pipefail
           set -a
           # shellcheck disable=SC1091
           source /etc/homelab/backup.env
@@ -43,6 +44,7 @@
     - name: "BK-005: Assert live db.sqlite3 is excluded from latest snapshot"
       ansible.builtin.shell:
         cmd: |
+          set -euo pipefail
           set -a
           # shellcheck disable=SC1091
           source /etc/homelab/backup.env
@@ -69,6 +71,7 @@
     - name: "BK-008: Assert non-destructive restore viability and vault.yml checksum match"
       ansible.builtin.shell:
         cmd: |
+          set -euo pipefail
           set -a
           # shellcheck disable=SC1091
           source /etc/homelab/backup.env
@@ -76,26 +79,144 @@
           TARGET="/tmp/b2-test-restore"
           rm -rf "$TARGET"
           mkdir -p "$TARGET"
-          
+
           RESTORE_SCRIPT=""
-          for s in /usr/local/bin/restore-from-b2.sh /tmp/homelab2-ansible/scripts/restore-from-b2.sh /opt/homelab2/scripts/restore-from-b2.sh /tmp/restore-from-b2.sh ./scripts/restore-from-b2.sh; do
+          for s in ./scripts/restore-from-b2.sh /tmp/restore-from-b2.sh /usr/local/bin/restore-from-b2.sh \
+                   /tmp/homelab2-ansible/scripts/restore-from-b2.sh /opt/homelab2/scripts/restore-from-b2.sh; do
             if [ -x "$s" ]; then
               RESTORE_SCRIPT="$s"
               break
             fi
           done
-          
+
           if [ -z "$RESTORE_SCRIPT" ]; then
             echo "restore-from-b2.sh not found" >&2
             exit 1
           fi
 
           "$RESTORE_SCRIPT" --target-dir "$TARGET" --include-path etc/homelab/vault.yml --force
-          
+
           ORIG_SUM=$(sha256sum /etc/homelab/vault.yml | awk '{print $1}')
           REST_SUM=$(sha256sum "$TARGET/etc/homelab/vault.yml" | awk '{print $1}')
           rm -rf "$TARGET"
           [ -n "$ORIG_SUM" ] && [ "$ORIG_SUM" = "$REST_SUM" ]
+      changed_when: false
+
+    - name: "BK-009: Assert Stage 1 dry-run includes vault.yml and excludes /mnt/storage"
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          set -a
+          # shellcheck disable=SC1091
+          source /etc/homelab/backup.env
+          set +a
+          RESTORE_SCRIPT=""
+          for s in ./scripts/restore-from-b2.sh /tmp/restore-from-b2.sh /usr/local/bin/restore-from-b2.sh \
+                   /tmp/homelab2-ansible/scripts/restore-from-b2.sh /opt/homelab2/scripts/restore-from-b2.sh; do
+            if [ -x "$s" ]; then
+              RESTORE_SCRIPT="$s"
+              break
+            fi
+          done
+          if [ -z "$RESTORE_SCRIPT" ]; then
+            echo "restore-from-b2.sh not found" >&2
+            exit 1
+          fi
+          OUT=$("$RESTORE_SCRIPT" --stage config --dry-run 2>&1)
+          echo "$OUT" | grep -F "etc/homelab/vault.yml" >/dev/null
+          ! echo "$OUT" | grep -E '(^|/)mnt/storage' >/dev/null
+      changed_when: false
+
+    - name: "BK-010: Assert Stage 2 restore against unmounted target fails closed with CRITICAL"
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          set -a
+          # shellcheck disable=SC1091
+          source /etc/homelab/backup.env
+          set +a
+          TARGET="/tmp/b2-unmounted-test"
+          rm -rf "$TARGET"
+          mkdir -p "$TARGET"
+          RESTORE_SCRIPT=""
+          for s in ./scripts/restore-from-b2.sh /tmp/restore-from-b2.sh /usr/local/bin/restore-from-b2.sh \
+                   /tmp/homelab2-ansible/scripts/restore-from-b2.sh /opt/homelab2/scripts/restore-from-b2.sh; do
+            if [ -x "$s" ]; then
+              RESTORE_SCRIPT="$s"
+              break
+            fi
+          done
+          if [ -z "$RESTORE_SCRIPT" ]; then
+            echo "restore-from-b2.sh not found" >&2
+            rm -rf "$TARGET"
+            exit 1
+          fi
+          rc=0
+          ERR_OUT=$("$RESTORE_SCRIPT" --stage data --target-dir "$TARGET" --force 2>&1) || rc=$?
+          rm -rf "$TARGET"
+          [ "$rc" -eq 1 ] && echo "$ERR_OUT" | grep -q "CRITICAL: Storage mountpoint"
+      changed_when: false
+
+    - name: "BK-011: Assert invalid stage argument rejection exits with code 1"
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          RESTORE_SCRIPT=""
+          for s in ./scripts/restore-from-b2.sh /tmp/restore-from-b2.sh /usr/local/bin/restore-from-b2.sh \
+                   /tmp/homelab2-ansible/scripts/restore-from-b2.sh /opt/homelab2/scripts/restore-from-b2.sh; do
+            if [ -x "$s" ]; then
+              RESTORE_SCRIPT="$s"
+              break
+            fi
+          done
+          if [ -z "$RESTORE_SCRIPT" ]; then
+            echo "restore-from-b2.sh not found" >&2
+            exit 1
+          fi
+          rc=0
+          "$RESTORE_SCRIPT" --stage invalid --dry-run >/dev/null 2>&1 || rc=$?
+          [ "$rc" -eq 1 ]
+      changed_when: false
+
+    - name: "BK-012: Assert Stage 1 restore rehearsal restores vault.yml with mode 0600 and no /mnt/storage"
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          set -a
+          # shellcheck disable=SC1091
+          source /etc/homelab/backup.env
+          set +a
+          TARGET="/tmp/b2-stage1-test"
+          rm -rf "$TARGET"
+          mkdir -p "$TARGET"
+          RESTORE_SCRIPT=""
+          for s in ./scripts/restore-from-b2.sh /tmp/restore-from-b2.sh /usr/local/bin/restore-from-b2.sh \
+                   /tmp/homelab2-ansible/scripts/restore-from-b2.sh /opt/homelab2/scripts/restore-from-b2.sh; do
+            if [ -x "$s" ]; then
+              RESTORE_SCRIPT="$s"
+              break
+            fi
+          done
+          if [ -z "$RESTORE_SCRIPT" ]; then
+            echo "restore-from-b2.sh not found" >&2
+            rm -rf "$TARGET"
+            exit 1
+          fi
+          OUT=$("$RESTORE_SCRIPT" --stage 1 --target-dir "$TARGET" --include-path etc/homelab/vault.yml --force 2>&1)
+          MODE=$(stat -c "%a" "$TARGET/etc/homelab/vault.yml" 2>/dev/null || echo "")
+          if [ "$MODE" != "600" ]; then
+            rm -rf "$TARGET"
+            exit 1
+          fi
+          if [ -e "$TARGET/mnt/storage" ]; then
+            rm -rf "$TARGET"
+            exit 1
+          fi
+          if echo "$OUT" | grep -i "post-restore hooks" >/dev/null; then
+            rm -rf "$TARGET"
+            exit 1
+          fi
+          rm -rf "$TARGET"
       changed_when: false
 
     - name: Display Phase 5 Backup verification summary
@@ -110,3 +231,7 @@
           - "BK-006 Dry-Run & Pre-Hook: PASS"
           - "BK-007 Timers Active: PASS"
           - "BK-008 Restore Viability: PASS"
+          - "BK-009 Stage 1 Dry-Run Filter: PASS"
+          - "BK-010 Stage 2 Unmounted Guard: PASS"
+          - "BK-011 Invalid Stage Rejection: PASS"
+          - "BK-012 Stage 1 Rehearsal: PASS"

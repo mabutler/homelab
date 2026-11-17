@@ -47,15 +47,17 @@ Before wiping the OS drive (`/dev/nvme0n1`), ensure you have:
 
 ---
 
-### Phase 2: Restore State & Secrets from Backblaze B2
+### Phase 2: Stage 1 - System Bootstrap & Secrets Restoration (`--stage config`)
+
+Execute Stage 1 on the clean OS installation **before** Docker or MergerFS storage are configured. This extracts host configurations, secret environment files, SSH keys, Antigravity OAuth tokens, and repository files, enforces restrictive permissions, syncs `vault.yml` into the Ansible inventory, excludes `/mnt/storage`, and skips post-restore hooks.
 
 1. SSH into the freshly booted system as `admin`:
    ```bash
    ssh admin@192.168.4.57
    ```
-2. Install `restic` and `sqlite` so the restore script and hooks can run prior to full Ansible convergence:
+2. Install `restic` on the clean host:
    ```bash
-   sudo pacman -Sy --noconfirm restic sqlite
+   sudo pacman -Sy --noconfirm restic
    ```
 3. Clone the repository to `/home/admin/projects/homelab2`:
    ```bash
@@ -64,63 +66,64 @@ Before wiping the OS drive (`/dev/nvme0n1`), ensure you have:
    ln -sfn /home/admin/projects/homelab2 ~/homelab2
    cd ~/projects/homelab2
    ```
-4. Export the 4 Backblaze B2 + Restic bootstrap credentials and execute the full restore to `/`:
+4. Export the 4 Backblaze B2 bootstrap credentials and execute Stage 1 restoration:
    ```bash
    export B2_ACCOUNT_ID="<YOUR_B2_ACCOUNT_ID>"
    export B2_ACCOUNT_KEY="<YOUR_B2_ACCOUNT_KEY>"
    export RESTIC_REPOSITORY="b2:fidelacchius-backups:fidelacchius"
    export RESTIC_PASSWORD="<YOUR_RESTIC_PASSWORD>"
 
-   sudo -E ./scripts/restore-from-b2.sh --target-dir / --force
+   # Execute Stage 1 extraction to root (or use --dry-run first to preview candidate files)
+   sudo -E ./scripts/restore-from-b2.sh --stage config --target-dir / --force
    ```
-   **What this restores automatically**:
-   - `/etc/homelab/vault.yml` (and syncs it to `~/projects/homelab2/ansible/inventory/group_vars/all/vault.yml`)
-   - `/etc/homelab/monitoring.env` and `/var/lib/homelab/monitoring/checks.json`
-   - `/opt/services/vaultwarden` (and restores `data/db.sqlite3` from `backups/snapshot.sqlite3` via `10-vaultwarden.sh post-restore`)
-   - `/opt/services/frigate` (and restores `config/frigate.db` from `backups/snapshot.sqlite3` via `20-frigate.sh post-restore`)
-   - `/opt/services/immich/backups/immich_db_backup.dump`
-   - `/mnt/storage/media/photos` (`library`, `upload`, `profile`)
-   - `/home/admin/.gemini/*`, `/home/admin/.config/antigravity/*`, `/home/admin/.config/sops/age/keys.txt`, and `/home/admin/.ssh/id_ed25519_github*`
+   *(Or orchestrate remotely from a Windows workstation: `./scripts/restore-from-b2.ps1 -HostAddress 192.168.4.57 -User admin -Stage config -Force`)*
 
-5. Fix ownership on restored `/home/admin` files:
-   ```bash
-   sudo chown -R admin:users /home/admin/.gemini /home/admin/.config /home/admin/.ssh /home/admin/projects
-   chmod 700 /home/admin/.ssh /home/admin/.gemini
-   chmod 600 /home/admin/.ssh/id_ed25519_github
-   ```
+   **What Stage 1 accomplishes automatically**:
+   - Restores `/etc/homelab/vault.yml`, `/etc/homelab/backup.env`, `/etc/homelab/monitoring.env` with `0600 root:root` permissions.
+   - Synchronizes `/etc/homelab/vault.yml` directly to `~/projects/homelab2/ansible/inventory/group_vars/all/vault.yml` with mode `0600` and `admin` ownership.
+   - Restores `/home/admin/.ssh` (`0700`, private keys `0600`, public keys `0644`), `/home/admin/.gemini` (`0700`, JSON files `0600`), and `/home/admin/projects` with `admin:users` ownership.
+   - Strictly excludes `/mnt/storage` and skips post-restore database hooks.
 
 ---
 
-### Phase 3: Full Platform Convergence via Ansible (`site.yml`)
+### Phase 3: Platform Convergence via Ansible (`site.yml`)
 
-1. Install `ansible-core` on the host (if running convergence locally on `fidelacchius`):
+With `/etc/homelab/vault.yml` synchronized and SSH/deploy keys restored, run the master Ansible playbook. This installs Docker, sets up nftables and Caddy, partitions/mounts the MergerFS storage pool at `/mnt/storage`, configures SnapRAID, and deploys systemd units:
+
+1. Install `ansible-core` on the host:
    ```bash
    sudo pacman -S --noconfirm ansible-core
    cd ~/projects/homelab2/ansible
    ansible-galaxy collection install -r requirements.yml
    ```
-2. Run the master `site.yml` playbook against localhost to converge all system hardening, networking (Tailscale, nftables, Caddy), storage mounts (MergerFS, SnapRAID), Docker stacks (Vaultwarden, Frigate, Immich), Backup timers, Antigravity daemon, and Monitoring:
+2. Run the master `site.yml` playbook against localhost:
    ```bash
    ansible-playbook -i inventory/hosts.yml playbooks/site.yml --connection=local
    ```
-   *(Alternatively, run the phase apply scripts from your workstation or host: `./scripts/apply-phase2.sh`, `./scripts/apply-phase3.sh`, `./scripts/apply-phase4.sh`, `./scripts/apply-phase5.sh`, `./scripts/apply-phase5-frigate.sh`, `./scripts/apply-phase5-immich.sh`, `./scripts/apply-phase7-antigravity.sh --confirm-target-ready`, `./scripts/apply-phase8-monitoring.sh`.)*
+   *(Alternatively, run modular apply scripts: `./scripts/apply-phase2.sh`, `./scripts/apply-phase3.sh`, `./scripts/apply-phase4.sh`, `./scripts/apply-phase5.sh`, `./scripts/apply-phase5-frigate.sh`, `./scripts/apply-phase5-immich.sh`, `./scripts/apply-phase7-antigravity.sh --confirm-target-ready`, `./scripts/apply-phase8-monitoring.sh`.)*
 
 ---
 
-### Phase 4: Restore Immich PostgreSQL Database
+### Phase 4: Stage 2 - Bulk Data & Database Hook Restoration (`--stage data`)
 
-Once `site.yml` has started the Docker daemon and the `immich.service` stack (`immich_postgres` container is running), restore the transactional PostgreSQL dump:
+Once `site.yml` has mounted the MergerFS storage pool at `/mnt/storage` and deployed container services, run Stage 2. This enforces an active mountpoint check to protect the root NVMe drive, extracts bulk application states and media, ensures Docker and application containers are started, and automatically executes all post-restore database hooks:
 
-```bash
-# Ensure Immich containers are up
-sudo systemctl start immich.service
+1. Execute Stage 2 restoration:
+   ```bash
+   cd ~/projects/homelab2
+   sudo -E ./scripts/restore-from-b2.sh --stage data --target-dir / --force
+   ```
+   *(Or orchestrate remotely from a Windows workstation: `./scripts/restore-from-b2.ps1 -HostAddress 192.168.4.57 -User admin -Stage data -Force`)*
 
-# Restore PostgreSQL database from /opt/services/immich/backups/immich_db_backup.dump
-sudo /etc/homelab/backup.d/30-immich.sh post-restore
-
-# Restart Immich server to reconnect cleanly to the restored database
-sudo systemctl restart immich.service
-```
+   **What Stage 2 accomplishes automatically**:
+   - **Mountpoint Safety Assertion**: Validates `mountpoint -q /mnt/storage`. If unmounted, immediately aborts with exit code `1` and emits a `CRITICAL` error to prevent multi-hundred-gigabyte media leakage onto the root NVMe drive.
+   - Restores `/opt/services` (Vaultwarden, Frigate, Immich configurations, compose files, and transactional database backups) and enforces `0700 1000:1000` / `0600` permissions.
+   - Restores `/mnt/storage/media/photos` (`library`, `upload`, `profile`) and enforces `2775` permissions owned by `1000:1001` (`admin:storage`).
+   - Ensures `docker.service` and application units (`vaultwarden.service`, `frigate.service`, `immich.service`) are active.
+   - Automatically executes all post-restore database hooks in `/etc/homelab/backup.d/*.sh post-restore`:
+     - `10-vaultwarden.sh`: Restores `data/db.sqlite3` from `backups/snapshot.sqlite3`.
+     - `20-frigate.sh`: Restores `config/frigate.db` from `backups/snapshot.sqlite3`.
+     - `30-immich.sh`: Imports transactional PostgreSQL dump into `immich_postgres` and restarts services.
 
 ---
 
@@ -140,7 +143,7 @@ cd ~/projects/homelab2
 # Phase 4: Storage Pooling (MergerFS) & SnapRAID
 ./scripts/verify-phase4.sh --local
 
-# Phase 5: Applications & Backups
+# Phase 5: Applications & Backups (BK-001 through BK-012)
 sudo ./scripts/verify-phase5-backup.sh
 ./scripts/verify-phase5-vaultwarden.sh --local
 ./scripts/verify-phase5-frigate.sh --local
@@ -159,6 +162,5 @@ sudo ./scripts/verify-phase8-monitoring.sh
 
 - [Phase 1 Arch Linux Live USB Installer Guide](../scripts/install/README.md)
 - [Phase 3 Network Disaster Recovery Procedure](disaster-recovery-phase3.md)
-- [Phase 5 Backblaze B2 Backup & Restore Quickstart](../specs/006-backblaze-backup-restore/quickstart.md)
 - [Operational Runbook (Antigravity & Immich)](operations.md)
 - [SOPS Master Age Key Backup & Recovery](recovery/age-key-backup.md)
