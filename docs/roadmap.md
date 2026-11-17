@@ -234,16 +234,30 @@ Each planned workload brings distinct dependencies, storage placement, and expli
   - *Backup Confirmed*: Automated SQLite/Postgres dumps and attachment snapshots verified for each app.
   - *Telemetry Confirmed*: HTTP health endpoints (`/api/app/about` for Mealie, `/api/v1/info` for Vikunja, ping endpoint for Memos) responding with HTTP 200.
 
-### 4.7 Arr Stack (Deferred / Partial Deployment)
-- **Role**: Automated media management (e.g., Radarr, Sonarr, Prowlarr, download client).
-- **State & Storage**: Configuration directories on NVMe; media libraries on MergerFS; temporary downloads on scratch storage.
+### 4.7 Media & Arr Stack (Staged Deployment)
+- **Role**: Media serving, virtual linear TV channels, download isolation, and automated media management.
+- **Staged Rollout Plan** *(Stage 1 is a hard prerequisite; Stages 2A, 2B, and 2C can be deployed in any order after Stage 1)*:
+  - **Stage 1 — Core Media & VPN Download Foundation (`gluetun` + `qbittorrent` + `jellyfin`)** *(Must come first)*:
+    - `gluetun`: WireGuard/OpenVPN container with strict kill-switch.
+    - `qbittorrent`: Routed exclusively through Gluetun (`network_mode: "service:gluetun"`).
+    - `jellyfin`: Media server scanning `/mnt/storage/media/{movies,tv}` with Intel UHD 770 iGPU (`/dev/dri`, `iHD` QSV/VAAPI) hardware transcoding.
+  - **Stage 2A — Virtual Linear TV Channels (`ersatztv`)** *(After Stage 1; any order)*:
+    - Connects to Jellyfin libraries/collections to schedule 24/7 virtual TV channels (e.g., an always-playing Christmas movie channel), exposing M3U + XMLTV EPG to Jellyfin Live TV with `/dev/dri` FFmpeg hardware transcoding.
+  - **Stage 2B — Media Request & Discovery Portal (`jellyseerr`)** *(After Stage 1; any order)*:
+    - User-friendly request/discovery UI authenticated against Jellyfin users; integrates with Radarr/Sonarr once Stage 2C is deployed.
+  - **Stage 2C — Automated Indexing & Acquisition (`prowlarr` + `radarr` + `sonarr`, optional `bazarr`)** *(After Stage 1; any order)*:
+    - `prowlarr` syncs indexers to `radarr` (movies) and `sonarr` (TV), which dispatch downloads to `qbittorrent` and atomically hardlink completed files into `/mnt/storage/media/{movies,tv}`.
+- **State & Storage Layout**:
+  - **Configs & SQLite DBs (Tier 0 NVMe)**: `/opt/services/arr/{gluetun,qbittorrent,jellyfin,ersatztv,jellyseerr,prowlarr,radarr,sonarr}/config` (PUID `1000`, PGID `1001`).
+  - **Incomplete Downloads (Tier 2 Scratch)**: `/mnt/scratch/downloads/incomplete` — kept off SnapRAID parity drives to avoid constant parity churn during active swarming.
+  - **Completed Downloads & Media Library (Tier 1 MergerFS)**: `/mnt/storage/media/{movies,tv}` and `/mnt/storage/downloads/complete` — sharing a single `/mnt/storage` MergerFS mount (`atomic_rename` enabled) so Radarr/Sonarr perform instant atomic hardlinks/moves without duplicating disk space or thrashing I/O. (SnapRAID config excludes `downloads/` while protecting `media/`).
 - **Ramifications**:
-  - **Atomic Moves & Hardlinks**: MergerFS configured with `atomic_rename` enabled across downloads and media library to eliminate duplicate disk space usage and I/O thrashing.
-  - **Network Isolation & VPN**: Download client routed through a containerized VPN with kill-switch (e.g., Gluetun).
-  - **Parity Exclusion**: Active, incomplete torrent downloads reside outside SnapRAID parity monitoring.
+  - **Strict VPN Kill-Switch**: Download client has no direct bridge/host network access; if the Gluetun tunnel drops, torrent traffic halts immediately.
+  - **Unified Permissions**: All containers run with `PUID=1000` / `PGID=1001` (`storage` group) and `UMASK=002` (`2775` dirs / `664` files) for seamless interoperability with FileBrowser and Jellyfin.
+  - **Ingress**: Web UIs bind to `127.0.0.1` and are exposed internally over Tailscale/LAN via Caddy drop-in (`/etc/caddy/conf.d/40-arr.caddy`)—never exposed publicly.
 - **Backup & Telemetry Gate**:
-  - *Backup Confirmed*: App config directories and databases backed up; download cache excluded.
-  - *Telemetry Confirmed*: Gluetun external IP check assertion verified; Arr API health endpoints responding.
+  - *Backup Confirmed*: Pre-backup hook (`/etc/homelab/backup.d/40-arr.sh`) captures clean SQLite snapshots (`.backup` / `VACUUM INTO`) and XML/YAML configs for all deployed stages; media files and download caches are excluded from Restic.
+  - *Telemetry Confirmed*: Gluetun external VPN IP assertion (`!=` host WAN IP) verified; Jellyfin `/health`, ErsatzTV/Jellyseerr UI, qBittorrent WebUI, and Arr `/api/v3/health` endpoints return HTTP 200; systemd `arr.service` active and monitored.
 
 ### 4.8 Steam Library & Local Game Streaming (to Steam Deck / TV Box)
 - **Role**: Central game installation repository and low-latency headless game streaming host rendering games for the Steam Deck or living room TV box.
@@ -385,7 +399,7 @@ flowchart LR
     6. **Mealie**: Backup (recipe JSON / DB dump) & Telemetry (HTTP 200 health endpoint) confirmed.
     7. **Vikunja**: Backup (DB dump + attachments) & Telemetry (`/api/v1/info` endpoint) confirmed.
     8. **Memos**: Backup (`memos_prod.db` snapshot) & Telemetry (health ping, container status) confirmed.
-    9. **Arr Stack (Partial)**: Backup (app configs/DBs) & Telemetry (Gluetun VPN IP check, UI response) confirmed.
+    9. **Media & Arr Stack (Staged)**: Stage 1 (`gluetun`, `qbittorrent`, `jellyfin`) followed in any order by Stage 2A (`ersatztv`), Stage 2B (`jellyseerr`), and Stage 2C (`prowlarr`, `radarr`, `sonarr`). Backup (SQLite `.backup` hook `/etc/homelab/backup.d/40-arr.sh` + app configs; downloads/media excluded) & Telemetry (Gluetun VPN external IP kill-switch check, Jellyfin `/health`, `/api/v3/health` + UI HTTP 200) confirmed.
 
 ### Phase 6: Steam Library & Low-Latency Game Streaming
 - **Primary Goal**: Enable local high-performance game streaming to the Steam Deck and TV box.

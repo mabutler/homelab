@@ -57,7 +57,12 @@ flowchart LR
   - **Frigate NVR**: Backup (event DB + config; CCTV excluded) & Telemetry (Coral latency, stream FPS, API check).
   - **FileBrowser**: Backup (DB + settings) & Telemetry (web response, storage mount assertion).
   - **Mealie, Vikunja, Memos**: Backup (individual DB/attachment dumps) & Telemetry (HTTP health endpoints).
-  - **Arr Stack (Partial)**: Backup (app configs/DBs) & Telemetry (Gluetun VPN IP check, UI response).
+  - **Media & Arr Stack (Staged)**:
+    - *Stage 1 (Prerequisite)*: `gluetun` VPN kill-switch + `qbittorrent` (`network_mode: "service:gluetun"`) + `jellyfin` (Intel UHD 770 `/dev/dri` QSV/VAAPI).
+    - *Stage 2A (Any order after Stage 1)*: `ersatztv` (24/7 virtual linear TV channels via Jellyfin Live TV M3U/XMLTV).
+    - *Stage 2B (Any order after Stage 1)*: `jellyseerr` (media request & discovery UI).
+    - *Stage 2C (Any order after Stage 1)*: `prowlarr` + `radarr` + `sonarr` (automated indexing & single-mount MergerFS atomic hardlinks).
+    - *Storage & Gates*: NVMe configs (`/opt/services/arr`), scratch incomplete downloads (`/mnt/scratch/downloads/incomplete`), MergerFS (`/mnt/storage/{downloads/complete,media}`). Backup (`/etc/homelab/backup.d/40-arr.sh` SQLite snapshots) & Telemetry (Gluetun external IP check, Jellyfin `/health`, `/api/v3/health`, UI HTTP 200).
 - **Phase 6: Steam Library & Local Game Streaming**: Dedicated fast game storage (`/mnt/games`), Sunshine game streaming server (NVENC/VAAPI, PipeWire, `uinput` virtual controllers), headless virtual display emulation for streaming to Steam Deck (1280x800 @ 90Hz) and TV box (4K). *Gates: Sunshine configs backup & encoder/stream telemetry.*
 - **Phase 7: Dedicated Local Backup Server & LAN Repositories**: Migration or addition of a local on-premises backup server (e.g., TrueNAS, MinIO, or Proxmox Backup Server) to reduce Backblaze B2 egress costs and accelerate LAN disaster recovery drills (< 15 min). *Gates: Local repository sync & dual-target replication verification.*
 - **Phase 8: Platform Observability & Annual Maintenance**: Centralized dashboard, healthchecks, telemetry alerts, annual upgrade cadence. *Gates: Active failure simulation alert verification.*
@@ -74,7 +79,7 @@ flowchart LR
 | **Vaultwarden** | Reverse proxy with valid TLS + WebSockets (`/notifications/hub`) | NVMe (`/opt/services/vaultwarden`) | Hourly/daily transactional SQLite `.backup` vacuum dump; `/alive` & WebSocket check. |
 | **FileBrowser** | Read/write mount to MergerFS with storage group PUID/PGID | NVMe (config) + MergerFS (`/mnt/storage`) | `filebrowser.db` backup; HTTP 200 response & storage mount reachability check. |
 | **Mealie, Vikunja, Memos** | Standard web ingress via reverse proxy | NVMe (`/opt/services/...`) | Automated DB & attachment backups; HTTP health endpoint assertions (`/api/...`). |
-| **Arr Stack (Partial)** | Gluetun VPN container killswitch | NVMe (configs) + MergerFS (media + staging) | App config/DB backups; Gluetun external IP check assertion & UI healthchecks. |
+| **Media & Arr Stack (Staged)** | Gluetun VPN kill-switch (`service:gluetun`), Intel UHD 770 `/dev/dri` (Jellyfin/ErsatzTV), PUID `1000`/PGID `1001`, Caddy Tailscale ingress (`40-arr.caddy`) | NVMe (`/opt/services/arr`) + Scratch (`/mnt/scratch/downloads/incomplete`) + MergerFS (`/mnt/storage/{downloads/complete,media}` atomic hardlinks) | SQLite `.backup` hook (`/etc/homelab/backup.d/40-arr.sh`) + configs; Gluetun VPN external IP assertion, Jellyfin `/health`, & `/api/v3/health` UI checks. |
 | **Steam & Sunshine Streaming** | Discrete GPU / iGPU encoder, `/dev/uinput`, PipeWire | Dedicated Fast SSD (`/mnt/games`) | Sunshine config & mapping backup; GPU encoder status & stream loss logging. |
 
 ---
