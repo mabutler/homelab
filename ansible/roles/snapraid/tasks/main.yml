@@ -15,9 +15,10 @@
   ansible.builtin.shell:
     cmd: >
       mkdir -p /tmp/aur-snapraid &&
+      chown -R {{ admin_username | default('admin') }}: /tmp/aur-snapraid &&
       cd /tmp/aur-snapraid &&
-      git clone https://aur.archlinux.org/snapraid.git . &&
-      makepkg -s --noconfirm &&
+      sudo -u {{ admin_username | default('admin') }} git clone https://aur.archlinux.org/snapraid.git . &&
+      sudo -u {{ admin_username | default('admin') }} makepkg -s --noconfirm &&
       pacman -U --noconfirm *.pkg.tar.zst &&
       cd / &&
       rm -rf /tmp/aur-snapraid

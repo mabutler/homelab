@@ -21,7 +21,7 @@
 
 - name: Include Funnel tasks
   ansible.builtin.include_tasks: funnel.yml
-  when: vaultwarden_enable_funnel | default(true)
+  when: (vaultwarden_enable_funnel | default(true)) | bool
   tags:
     - vaultwarden
     - vaultwarden_funnel

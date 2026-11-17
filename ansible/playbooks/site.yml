@@ -105,6 +105,12 @@
         - docker
         - containers
 
+    - role: antigravity
+      tags:
+        - antigravity
+        - remote_control
+        - agent
+
     - role: vaultwarden
       tags:
         - vaultwarden
@@ -124,12 +130,6 @@
       tags:
         - backup
         - restic
-
-    - role: antigravity
-      tags:
-        - antigravity
-        - remote_control
-        - agent
 
     - role: monitoring
       tags:

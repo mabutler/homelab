@@ -44,23 +44,12 @@
     - antigravity
     - daemon
 
-- name: Deploy systemd user service unit for Antigravity Remote Control
-  ansible.builtin.template:
-    src: agy-remote-control.service.j2
-    dest: "{{ antigravity_operator_home }}/.config/systemd/user/{{ antigravity_service_unit }}"
-    owner: "{{ antigravity_operator_user }}"
-    group: "{{ antigravity_operator_group }}"
-    mode: '0644'
+- name: Query operator numeric UID
+  ansible.builtin.command:
+    cmd: "id -u {{ antigravity_operator_user }}"
+  register: operator_uid_cmd
+  changed_when: false
   become: true
-  notify:
-    - Systemd user daemon-reload
-    - Restart agy-remote-control service
-  tags:
-    - antigravity
-    - daemon
-
-- name: Flush handlers to reload systemd user daemon if unit changed
-  ansible.builtin.meta: flush_handlers
   tags:
     - antigravity
     - daemon
@@ -69,16 +58,6 @@
   ansible.builtin.stat:
     path: "{{ antigravity_oauth_creds_path }}"
   register: oauth_check
-  become: true
-  tags:
-    - antigravity
-    - daemon
-
-- name: Query operator numeric UID
-  ansible.builtin.command:
-    cmd: "id -u {{ antigravity_operator_user }}"
-  register: operator_uid_cmd
-  changed_when: false
   become: true
   tags:
     - antigravity
@@ -108,6 +87,19 @@
     force: true
   become: true
   become_user: "{{ antigravity_operator_user }}"
+  tags:
+    - antigravity
+    - daemon
+
+- name: Reload systemd user daemon for compatibility alias
+  ansible.builtin.systemd:
+    scope: user
+    daemon_reload: true
+  become: true
+  become_user: "{{ antigravity_operator_user }}"
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ operator_uid_cmd.stdout | default('1000') }}"
+    DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ operator_uid_cmd.stdout | default('1000') }}/bus"
   tags:
     - antigravity
     - daemon

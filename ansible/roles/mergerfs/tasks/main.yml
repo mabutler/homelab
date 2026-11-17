@@ -15,9 +15,10 @@
   ansible.builtin.shell:
     cmd: >
       mkdir -p /tmp/aur-mergerfs &&
+      chown -R {{ admin_username | default('admin') }}: /tmp/aur-mergerfs &&
       cd /tmp/aur-mergerfs &&
-      git clone https://aur.archlinux.org/mergerfs-bin.git . &&
-      makepkg -s --noconfirm &&
+      sudo -u {{ admin_username | default('admin') }} git clone https://aur.archlinux.org/mergerfs-bin.git . &&
+      sudo -u {{ admin_username | default('admin') }} makepkg -s --noconfirm &&
       pacman -U --noconfirm *.pkg.tar.zst &&
       cd / &&
       rm -rf /tmp/aur-mergerfs

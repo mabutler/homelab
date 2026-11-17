@@ -2,7 +2,8 @@
 # /etc/nftables.conf
 # Managed by Ansible - do not edit manually
 
-flush ruleset
+table {{ firewall_address_family | default('inet') }} {{ firewall_table_name | default('filter') }}
+delete table {{ firewall_address_family | default('inet') }} {{ firewall_table_name | default('filter') }}
 
 table {{ firewall_address_family | default('inet') }} {{ firewall_table_name | default('filter') }} {
     chain input {

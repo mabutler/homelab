@@ -7,7 +7,7 @@ Wants=network-online.target
 Type=simple
 Environment="HOME={{ antigravity_operator_home }}"
 Environment="PATH={{ antigravity_binary_dir }}:/usr/local/bin:/usr/bin:/bin"
-ExecStart={{ antigravity_binary_path }} remote-control daemon --name {{ antigravity_instance_name }}
+ExecStart={{ antigravity_binary_path }} remote-control serve
 Restart=always
 RestartSec=5
 
