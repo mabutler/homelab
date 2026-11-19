@@ -429,6 +429,10 @@ flowchart LR
   - Centralized telemetry dashboard (e.g., Grafana / VictoriaMetrics or lightweight alternative).
   - Dead-man switch / healthcheck notifications (e.g., Healthchecks.io) for backup runs, parity syncs, and system health.
   - **Restic Encryption Password Rotation**: Rotate `vault_restic_password` on `b2:fidelacchius-backups:fidelacchius` (`restic key add` / `restic key remove`), update `vault.yml` and `/etc/homelab/backup.env`, and validate non-destructive restore (`BK-008`).
+  - **Internet-Facing Security Audit & Hardening**:
+    - Restrict Vaultwarden `/admin` from public Tailscale Funnel traffic (or unset `ADMIN_TOKEN` when not actively administering), verify Argon2id hashing for `ADMIN_TOKEN`, and confirm 2FA on all Vaultwarden accounts.
+    - Audit Tailscale Admin Console (device approval enabled, tailnet ACLs scoped to required ports, MFA on Tailscale/Google/Backblaze B2/GitHub accounts).
+    - Verify `arr_vpn` killswitch blocks traffic on exit-node drop, and confirm router has UPnP disabled with zero WAN port forwards to `192.168.4.57`.
   - Pinned repository package versions and annual major upgrade playbooks with rollback verification.
 - **Phase 8 Completion Gates**:
   - *Backup Gate*: Dashboard definitions and alert rules committed to version control.
