@@ -1,0 +1,25 @@
+---
+# Caddy internal-only reverse proxy ingress configuration for Media & Arr Stack (Stage 1)
+
+- name: Ensure Caddy drop-in configuration directory exists
+  ansible.builtin.file:
+    path: /etc/caddy/conf.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Deploy Media & Arr internal-only Caddy reverse proxy drop-in
+  ansible.builtin.template:
+    src: 40-arr.caddy.j2
+    dest: "{{ arr_caddy_dropin_path | default('/etc/caddy/conf.d/40-arr.caddy') }}"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload caddy
+
+- name: Validate Caddy configuration syntax with 40-arr.caddy drop-in
+  ansible.builtin.command:
+    cmd: caddy validate --config /etc/caddy/Caddyfile
+  changed_when: false
+  when: not ansible_check_mode

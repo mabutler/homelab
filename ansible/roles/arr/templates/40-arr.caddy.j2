@@ -1,0 +1,60 @@
+# /etc/caddy/conf.d/40-arr.caddy
+# Managed by Ansible - homelab2
+# Contract: ARR-INGRESS-V1
+# Internal-only ingress for Media & Arr Stack (LAN + Tailscale mesh only; zero public exposure)
+
+# Stage 1: Jellyfin Media Server
+jellyfin.{$HOMELAB_DOMAIN:lan} {
+    tls internal
+    log {
+        output stderr
+        format console
+        level INFO
+    }
+
+    @internal {
+        remote_ip 127.0.0.0/8 192.168.4.0/24 100.64.0.0/10 ::1
+    }
+
+    handle @internal {
+        reverse_proxy 127.0.0.1:{{ arr_jellyfin_port | default(8096) }} {
+            header_up Host {host}
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-For {remote_host}
+            header_up X-Forwarded-Proto {scheme}
+        }
+    }
+
+    handle {
+        respond "Forbidden: Internal network access only" 403
+    }
+}
+
+# Stage 1: qBittorrent Download Client (routed via arr_vpn namespace loopback binding)
+qbittorrent.{$HOMELAB_DOMAIN:lan} {
+    tls internal
+    log {
+        output stderr
+        format console
+        level INFO
+    }
+
+    @internal {
+        remote_ip 127.0.0.0/8 192.168.4.0/24 100.64.0.0/10 ::1
+    }
+
+    handle @internal {
+        reverse_proxy 127.0.0.1:{{ arr_qbittorrent_webui_port | default(8080) }} {
+            header_up Host {host}
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-For {remote_host}
+            header_up X-Forwarded-Proto {scheme}
+        }
+    }
+
+    handle {
+        respond "Forbidden: Internal network access only" 403
+    }
+}
+
+# Reserved for Stage 2A (ersatztv), Stage 2B (jellyseerr), and Stage 2C (prowlarr, radarr, sonarr)

@@ -1,0 +1,148 @@
+# Docker Compose manifest for Media & Arr Stack - Stage 1
+# Managed by Ansible - homelab2
+# Contract: ARR-SERVICE-V1
+
+services:
+{% if arr_vpn_mode | default('tailscale') == 'gluetun' %}
+  vpn:
+    container_name: arr_vpn
+    image: ghcr.io/qdm12/gluetun:${GLUETUN_VERSION:-v3.39.1}
+    restart: unless-stopped
+    stop_grace_period: 30s
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    ports:
+      - "${ARR_HOST_BIND:-127.0.0.1}:${QBITTORRENT_WEBUI_PORT:-8080}:${QBITTORRENT_WEBUI_PORT:-8080}"
+      - "${ARR_HOST_BIND:-127.0.0.1}:${GLUETUN_CONTROL_PORT:-8000}:8000"
+    env_file:
+      - .env
+    environment:
+      - TZ=${TZ:-America/New_York}
+      - VPN_SERVICE_PROVIDER=${VPN_SERVICE_PROVIDER:-custom}
+      - VPN_TYPE=${VPN_TYPE:-wireguard}
+      - VPN_ENDPOINT_IP=${VPN_ENDPOINT_IP}
+      - VPN_ENDPOINT_PORT=${VPN_ENDPOINT_PORT:-51820}
+      - WIREGUARD_PUBLIC_KEY=${WIREGUARD_PUBLIC_KEY}
+      - WIREGUARD_PRIVATE_KEY=${WIREGUARD_PRIVATE_KEY}
+      - WIREGUARD_ADDRESSES=${WIREGUARD_ADDRESSES:-10.2.0.2/32}
+      - WIREGUARD_PRESHARED_KEY=${WIREGUARD_PRESHARED_KEY}
+      - SERVER_COUNTRIES=${SERVER_COUNTRIES}
+      - OPENVPN_USER=${OPENVPN_USER}
+      - OPENVPN_PASSWORD=${OPENVPN_PASSWORD}
+      - FIREWALL=${FIREWALL:-on}
+      - FIREWALL_OUTBOUND_SUBNETS=${FIREWALL_OUTBOUND_SUBNETS:-192.168.4.0/24}
+      - HTTP_CONTROL_SERVER_ADDRESS=${HTTP_CONTROL_SERVER_ADDRESS:-:8000}
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ${ARR_SERVICE_DIR:-/opt/services/arr}/gluetun/config:/gluetun
+    healthcheck:
+      test: ["CMD", "/gluetun-entrypoint", "healthcheck"]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+{% else %}
+  vpn:
+    container_name: arr_vpn
+    image: ghcr.io/tailscale/tailscale:${TAILSCALE_VERSION:-v1.76.6}
+    hostname: ${TS_HOSTNAME:-fidelacchius-arr-vpn}
+    restart: unless-stopped
+    stop_grace_period: 30s
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    ports:
+      - "${ARR_HOST_BIND:-127.0.0.1}:${QBITTORRENT_WEBUI_PORT:-8080}:${QBITTORRENT_WEBUI_PORT:-8080}"
+    env_file:
+      - .env
+    environment:
+      - TZ=${TZ:-America/New_York}
+      - TS_AUTHKEY=${TS_AUTHKEY}
+      - TS_HOSTNAME=${TS_HOSTNAME:-fidelacchius-arr-vpn}
+      - TS_STATE_DIR=/var/lib/tailscale
+      - TS_USERSPACE=false
+      - TS_ACCEPT_DNS=true
+      - TS_EXIT_NODE=${TS_EXIT_NODE:-auto}
+      - TS_EXTRA_ARGS=${TS_EXTRA_ARGS:---accept-dns=true}
+    entrypoint:
+      - /bin/sh
+      - -c
+      - "/usr/local/bin/arr-vpn-killswitch.sh && exec /usr/local/bin/containerboot"
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ${ARR_SERVICE_DIR:-/opt/services/arr}/vpn/config:/var/lib/tailscale
+      - ${ARR_SERVICE_DIR:-/opt/services/arr}/vpn/killswitch.sh:/usr/local/bin/arr-vpn-killswitch.sh:ro
+      - ${ARR_SERVICE_DIR:-/opt/services/arr}/vpn/healthcheck.sh:/usr/local/bin/arr-vpn-healthcheck.sh:ro
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/arr-vpn-healthcheck.sh"]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+{% endif %}
+
+  qbittorrent:
+    container_name: arr_qbittorrent
+    image: lscr.io/linuxserver/qbittorrent:${QBITTORRENT_VERSION:-5.0.2}
+    restart: unless-stopped
+    stop_grace_period: 30s
+    network_mode: "service:vpn"
+    depends_on:
+      vpn:
+        condition: service_started
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1001}
+      - UMASK=${UMASK:-002}
+      - TZ=${TZ:-America/New_York}
+      - WEBUI_PORT=${QBITTORRENT_WEBUI_PORT:-8080}
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ${ARR_SERVICE_DIR:-/opt/services/arr}/qbittorrent/config:/config
+      - ${ARR_SCRATCH_INCOMPLETE_DIR:-/mnt/scratch/downloads/incomplete}:/mnt/scratch/downloads/incomplete
+      - ${ARR_STORAGE_ROOT:-/mnt/storage}:/mnt/storage
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:${QBITTORRENT_WEBUI_PORT:-8080} >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  jellyfin:
+    container_name: arr_jellyfin
+    image: lscr.io/linuxserver/jellyfin:${JELLYFIN_VERSION:-10.10.3}
+    restart: unless-stopped
+    stop_grace_period: 30s
+    ports:
+      - "${ARR_HOST_BIND:-127.0.0.1}:${JELLYFIN_HTTP_PORT:-8096}:8096"
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1001}
+      - UMASK=${UMASK:-002}
+      - TZ=${TZ:-America/New_York}
+      - LIBVA_DRIVER_NAME=${LIBVA_DRIVER_NAME:-iHD}
+    devices:
+      - source: {{ arr_igpu_render_device | default('/dev/dri/by-path/pci-0000:00:02.0-render') }}
+        target: /dev/dri/renderD128
+        permissions: rwm
+      - source: {{ arr_igpu_card_device | default('/dev/dri/by-path/pci-0000:00:02.0-card') }}
+        target: /dev/dri/card0
+        permissions: rwm
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ${ARR_SERVICE_DIR:-/opt/services/arr}/jellyfin/config:/config
+      - ${ARR_STORAGE_MOVIES_DIR:-/mnt/storage/media/movies}:/mnt/storage/media/movies
+      - ${ARR_STORAGE_TV_DIR:-/mnt/storage/media/tv}:/mnt/storage/media/tv
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8096/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 45s
+
+  # Stage 2A (ersatztv), Stage 2B (jellyseerr), and Stage 2C (prowlarr, radarr, sonarr)
+  # extend this compose stack additively in subsequent stages.

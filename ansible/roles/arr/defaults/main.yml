@@ -1,0 +1,68 @@
+---
+# Defaults for role arr (Media & Arr Stack - Stage 1)
+
+# VPN Mode ("tailscale" default for Tailscale Mullvad / Exit Node; "gluetun" for standalone WireGuard)
+arr_vpn_mode: "tailscale"
+
+# Pinned Container Image Versions (Principle V)
+arr_tailscale_version: "v1.76.6"
+arr_gluetun_version: "v3.39.1"
+arr_qbittorrent_version: "5.0.2"
+arr_jellyfin_version: "10.10.3"
+
+arr_tailscale_image: "ghcr.io/tailscale/tailscale:{{ arr_tailscale_version }}"
+arr_gluetun_image: "ghcr.io/qdm12/gluetun:{{ arr_gluetun_version }}"
+arr_qbittorrent_image: "lscr.io/linuxserver/qbittorrent:{{ arr_qbittorrent_version }}"
+arr_jellyfin_image: "lscr.io/linuxserver/jellyfin:{{ arr_jellyfin_version }}"
+
+# Unified Non-Root Ownership & Permissions (PUID=1000, PGID=1001, UMASK=002)
+arr_puid: 1000
+arr_pgid: 1001
+arr_umask: "002"
+arr_tz: "America/New_York"
+
+# Loopback Bindings & Ports
+arr_host_bind: "127.0.0.1"
+arr_jellyfin_port: 8096
+arr_qbittorrent_webui_port: 8080
+arr_gluetun_control_port: 8000
+
+# Three-Tier Storage Paths
+arr_service_dir: "/opt/services/arr"
+arr_backups_dir: "{{ arr_service_dir }}/backups"
+arr_scratch_incomplete_dir: "/mnt/scratch/downloads/incomplete"
+arr_storage_root: "/mnt/storage"
+arr_storage_complete_dir: "{{ arr_storage_root }}/downloads/complete"
+arr_storage_movies_dir: "{{ arr_storage_root }}/media/movies"
+arr_storage_tv_dir: "{{ arr_storage_root }}/media/tv"
+
+# Hardware Acceleration (Intel Alder Lake-S UHD Graphics 770 iGPU)
+arr_igpu_render_device: "/dev/dri/by-path/pci-0000:00:02.0-render"
+arr_igpu_card_device: "/dev/dri/by-path/pci-0000:00:02.0-card"
+arr_libva_driver_name: "iHD"
+
+# Tailscale Mullvad / Exit Node Configuration
+arr_ts_hostname: "fidelacchius-arr-vpn"
+arr_ts_state_dir: "/var/lib/tailscale"
+arr_ts_userspace: "false"
+arr_ts_accept_dns: "true"
+arr_ts_auth_key: "{{ vault_arr_tailscale_auth_key | default('') }}"
+arr_ts_exit_node: "{{ vault_arr_tailscale_exit_node | default('auto') }}"
+
+# Optional Standalone Gluetun VPN Configuration (used when arr_vpn_mode == 'gluetun')
+arr_vpn_service_provider: "{{ vault_arr_vpn_service_provider | default('custom') }}"
+arr_vpn_type: "{{ vault_arr_vpn_type | default('wireguard') }}"
+arr_vpn_endpoint_ip: "{{ vault_arr_vpn_endpoint_ip | default('') }}"
+arr_vpn_endpoint_port: "{{ vault_arr_vpn_endpoint_port | default('51820') }}"
+arr_vpn_wireguard_public_key: "{{ vault_arr_vpn_wireguard_public_key | default('') }}"
+arr_vpn_wireguard_private_key: "{{ vault_arr_vpn_wireguard_private_key | default('') }}"
+arr_vpn_wireguard_addresses: "{{ vault_arr_vpn_wireguard_addresses | default('10.2.0.2/32') }}"
+arr_vpn_wireguard_preshared_key: "{{ vault_arr_vpn_wireguard_preshared_key | default('') }}"
+arr_vpn_server_countries: "{{ vault_arr_vpn_server_countries | default('') }}"
+arr_vpn_openvpn_user: "{{ vault_arr_vpn_openvpn_user | default('') }}"
+arr_vpn_openvpn_password: "{{ vault_arr_vpn_openvpn_password | default('') }}"
+arr_firewall_outbound_subnets: "192.168.4.0/24"
+
+# System Integration Paths
+arr_caddy_dropin_path: "/etc/caddy/conf.d/40-arr.caddy"
+arr_backup_hook_path: "/etc/homelab/backup.d/40-arr.sh"

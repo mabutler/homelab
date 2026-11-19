@@ -1,0 +1,42 @@
+#!/bin/sh
+# /opt/services/arr/vpn/killswitch.sh
+# Managed by Ansible - homelab2
+# Enforces kernel netfilter kill-switch for UID 1000 (arr_qbittorrent) inside arr_vpn
+set -eu
+
+QBIT_UID="${PUID:-1000}"
+WEBUI_PORT="${QBITTORRENT_WEBUI_PORT:-8080}"
+
+# Switch Alpine iptables symlinks from legacy ip_tables to nftables (xtables-nft-multi) for Arch host kernel
+if [ -x /sbin/xtables-nft-multi ]; then
+    ln -sf xtables-nft-multi /sbin/iptables
+    ln -sf xtables-nft-multi /sbin/iptables-save
+    ln -sf xtables-nft-multi /sbin/iptables-restore
+    ln -sf xtables-nft-multi /sbin/ip6tables
+    ln -sf xtables-nft-multi /sbin/ip6tables-save
+    ln -sf xtables-nft-multi /sbin/ip6tables-restore
+fi
+
+# 1. Ensure loopback traffic is permitted
+iptables -C OUTPUT -o lo -j ACCEPT 2>/dev/null || iptables -I OUTPUT 1 -o lo -j ACCEPT
+
+# 2. Permit qBittorrent WebUI TCP responses on eth0 (bound to 127.0.0.1:${WEBUI_PORT} on host)
+iptables -C OUTPUT -o eth0 -p tcp --sport "${WEBUI_PORT}" -m owner --uid-owner "${QBIT_UID}" -j ACCEPT 2>/dev/null || \
+    iptables -I OUTPUT 2 -o eth0 -p tcp --sport "${WEBUI_PORT}" -m owner --uid-owner "${QBIT_UID}" -j ACCEPT
+
+# 3. Unconditionally DROP all other IPv4 egress from UID 1000 on eth0 (prevents any WAN/LAN leak)
+iptables -C OUTPUT -o eth0 -m owner --uid-owner "${QBIT_UID}" -j DROP 2>/dev/null || \
+    iptables -A OUTPUT -o eth0 -m owner --uid-owner "${QBIT_UID}" -j DROP
+
+# 4. Block UID 1000 on tailscale0 until healthcheck verifies an active ExitNodeStatus.Online == true
+iptables -C OUTPUT -o tailscale0 -m owner --uid-owner "${QBIT_UID}" -j DROP 2>/dev/null || \
+    iptables -I OUTPUT 1 -o tailscale0 -m owner --uid-owner "${QBIT_UID}" -j DROP
+
+# 5. Unconditionally DROP all non-loopback IPv6 egress from UID 1000
+if command -v ip6tables >/dev/null 2>&1; then
+    ip6tables -C OUTPUT -o lo -j ACCEPT 2>/dev/null || ip6tables -I OUTPUT 1 -o lo -j ACCEPT
+    ip6tables -C OUTPUT ! -o lo -m owner --uid-owner "${QBIT_UID}" -j DROP 2>/dev/null || \
+        ip6tables -A OUTPUT ! -o lo -m owner --uid-owner "${QBIT_UID}" -j DROP
+fi
+
+echo "INFO: arr_vpn kernel netfilter kill-switch active for UID ${QBIT_UID} (eth0 DROP enforced)."

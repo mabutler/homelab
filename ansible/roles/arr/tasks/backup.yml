@@ -1,0 +1,39 @@
+---
+# Backup integration tasks for Media & Arr Stack (Stage 1)
+
+- name: Ensure /etc/homelab/backup.d directory exists
+  ansible.builtin.file:
+    path: /etc/homelab/backup.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0750"
+
+- name: Deploy Media & Arr transactional SQLite backup integration hook
+  ansible.builtin.template:
+    src: 40-arr.sh.j2
+    dest: "{{ arr_backup_hook_path | default('/etc/homelab/backup.d/40-arr.sh') }}"
+    owner: root
+    group: root
+    mode: "0750"
+
+- name: Check if /etc/homelab/backup-excludes.txt exists
+  ansible.builtin.stat:
+    path: /etc/homelab/backup-excludes.txt
+  register: arr_backup_excludes_stat
+
+- name: Ensure Media & Arr exclusion patterns are present in /etc/homelab/backup-excludes.txt
+  ansible.builtin.lineinfile:
+    path: /etc/homelab/backup-excludes.txt
+    line: "{{ item }}"
+    state: present
+  loop:
+    - "/mnt/storage/downloads/**"
+    - "/mnt/storage/media/movies/**"
+    - "/mnt/storage/media/tv/**"
+    - "/opt/services/arr/*/config/**/*.db"
+    - "/opt/services/arr/*/config/**/*.sqlite3"
+    - "/opt/services/arr/jellyfin/config/cache/**"
+    - "/opt/services/arr/jellyfin/config/metadata/**"
+    - "/opt/services/arr/jellyfin/config/transcodes/**"
+  when: arr_backup_excludes_stat.stat.exists

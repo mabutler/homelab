@@ -1,0 +1,106 @@
+---
+# Three-tier directory layout and unified permission provisioning for Media & Arr Stack
+
+- name: Ensure Arr Tier 0 NVMe root service directory exists
+  ansible.builtin.file:
+    path: "{{ arr_service_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Ensure Arr Tier 0 NVMe backup staging directory exists
+  ansible.builtin.file:
+    path: "{{ arr_backups_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0750"
+
+- name: Ensure Arr Tier 0 NVMe VPN directory exists
+  ansible.builtin.file:
+    path: "{{ arr_service_dir }}/vpn"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Ensure Arr Tier 0 NVMe Tailscale VPN state directory exists with restricted mode (0700)
+  ansible.builtin.file:
+    path: "{{ arr_service_dir }}/vpn/config"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Ensure Stage 1 and Stage 2A/2B/2C service parent directories exist on NVMe
+  ansible.builtin.file:
+    path: "{{ arr_service_dir }}/{{ item }}"
+    state: directory
+    owner: "{{ arr_puid | default(1000) | string }}"
+    group: "{{ arr_pgid | default(1001) | string }}"
+    mode: "0775"
+  loop:
+    - gluetun
+    - qbittorrent
+    - jellyfin
+    - ersatztv
+    - jellyseerr
+    - prowlarr
+    - radarr
+    - sonarr
+
+- name: Ensure Stage 1 and Stage 2A/2B/2C service config directories exist on NVMe
+  ansible.builtin.file:
+    path: "{{ arr_service_dir }}/{{ item }}/config"
+    state: directory
+    owner: "{{ arr_puid | default(1000) | string }}"
+    group: "{{ arr_pgid | default(1001) | string }}"
+    mode: "0775"
+  loop:
+    - gluetun
+    - qbittorrent
+    - jellyfin
+    - ersatztv
+    - jellyseerr
+    - prowlarr
+    - radarr
+    - sonarr
+
+- name: Ensure Arr Tier 2 non-parity scratch download directories exist (2775 setgid)
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ admin_username | default('admin') }}"
+    group: "{{ storage_group | default('storage') }}"
+    mode: "2775"
+  loop:
+    - /mnt/scratch/downloads
+    - "{{ arr_scratch_incomplete_dir }}"
+
+- name: Ensure Arr Tier 1 MergerFS download and media library directories exist (2775 setgid)
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ admin_username | default('admin') }}"
+    group: "{{ storage_group | default('storage') }}"
+    mode: "2775"
+  loop:
+    - "{{ arr_storage_root }}/downloads"
+    - "{{ arr_storage_complete_dir }}"
+    - "{{ arr_storage_root }}/media"
+    - "{{ arr_storage_movies_dir }}"
+    - "{{ arr_storage_tv_dir }}"
+
+- name: Check if /etc/snapraid.conf exists
+  ansible.builtin.stat:
+    path: /etc/snapraid.conf
+  register: arr_snapraid_conf_stat
+
+- name: Ensure /downloads/ is excluded in /etc/snapraid.conf
+  ansible.builtin.lineinfile:
+    path: /etc/snapraid.conf
+    regexp: '^exclude\s+/downloads/$'
+    line: "exclude /downloads/"
+    state: present
+  when: arr_snapraid_conf_stat.stat.exists

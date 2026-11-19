@@ -21,6 +21,7 @@ snapraid_excludes:
   - ".DS_Store"
   - ".Trash-*"
   - "/mnt/scratch/"
+  - "/downloads/"
   - "*.unrecoverable"
 
 snapraid_diff_deletion_threshold: 50

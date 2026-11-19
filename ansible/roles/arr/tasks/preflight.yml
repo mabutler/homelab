@@ -1,0 +1,91 @@
+---
+# Fail-closed preflight assertions for Media & Arr Stack (Stage 1)
+
+- name: Check Docker service status
+  ansible.builtin.systemd:
+    name: docker
+    state: started
+  check_mode: true
+  register: arr_docker_service
+  failed_when: arr_docker_service.status.ActiveState != "active"
+
+- name: Check NVMe application storage directory (/opt/services)
+  ansible.builtin.stat:
+    path: /opt/services
+  register: arr_opt_services_stat
+
+- name: Assert /opt/services exists and is a directory
+  ansible.builtin.assert:
+    that:
+      - arr_opt_services_stat.stat.exists
+      - arr_opt_services_stat.stat.isdir
+    fail_msg: "CRITICAL: /opt/services does not exist or is not a directory."
+    success_msg: "/opt/services verified."
+
+- name: Check active mountpoints for /mnt/storage and /mnt/scratch
+  ansible.builtin.command: "mountpoint -q {{ item }}"
+  changed_when: false
+  register: arr_mountpoints
+  loop:
+    - /mnt/storage
+    - /mnt/scratch
+  failed_when: arr_mountpoints.rc != 0
+
+- name: Check /dev/net/tun character device for VPN tunnel
+  ansible.builtin.stat:
+    path: /dev/net/tun
+    follow: true
+  register: arr_tun_stat
+
+- name: Assert /dev/net/tun exists and is a character device
+  ansible.builtin.assert:
+    that:
+      - arr_tun_stat.stat.exists
+      - arr_tun_stat.stat.ischr
+    fail_msg: "CRITICAL: /dev/net/tun character device is missing."
+    success_msg: "/dev/net/tun character device verified."
+
+- name: Check Intel UHD Graphics 770 iGPU render device
+  ansible.builtin.stat:
+    path: "{{ arr_igpu_render_device }}"
+    follow: true
+  register: arr_igpu_render_stat
+
+- name: Check Intel UHD Graphics 770 iGPU card device
+  ansible.builtin.stat:
+    path: "{{ arr_igpu_card_device }}"
+    follow: true
+  register: arr_igpu_card_stat
+
+- name: Assert Intel UHD Graphics 770 iGPU devices exist
+  ansible.builtin.assert:
+    that:
+      - arr_igpu_render_stat.stat.exists
+      - arr_igpu_render_stat.stat.ischr
+      - arr_igpu_card_stat.stat.exists
+      - arr_igpu_card_stat.stat.ischr
+    fail_msg: >
+      CRITICAL: Intel UHD Graphics 770 iGPU device paths ({{ arr_igpu_render_device }} or
+      {{ arr_igpu_card_device }}) do not exist or are not character devices.
+    success_msg: "Intel UHD Graphics 770 iGPU devices verified."
+
+- name: Assert supported arr_vpn_mode is configured
+  ansible.builtin.assert:
+    that:
+      - arr_vpn_mode in ['tailscale', 'gluetun']
+    fail_msg: "CRITICAL: Unsupported arr_vpn_mode '{{ arr_vpn_mode }}'. Expected 'tailscale' or 'gluetun'."
+    success_msg: "VPN mode '{{ arr_vpn_mode }}' verified."
+
+- name: Assert Tailscale VPN auth key and exit node are configured in vault
+  ansible.builtin.assert:
+    that:
+      - (vault_arr_tailscale_auth_key | default('') | length) > 0
+      - (vault_arr_tailscale_exit_node | default('auto') | length) > 0
+      - vault_arr_tailscale_auth_key != 'tskey-auth-CHANGE_ME'
+      - vault_arr_tailscale_exit_node | default('auto') != 'CHANGE_ME_EXIT_NODE'
+    fail_msg: >
+      CRITICAL: 'vault_arr_tailscale_auth_key' must be set in
+      ansible/inventory/group_vars/all/vault.yml when arr_vpn_mode is 'tailscale'.
+    success_msg: "Tailscale VPN vault credentials verified."
+  when: arr_vpn_mode == 'tailscale'
+  no_log: true

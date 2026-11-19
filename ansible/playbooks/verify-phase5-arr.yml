@@ -1,0 +1,182 @@
+---
+- name: Homelab2 Phase 5 Media & Arr Stage 1 Acceptance Verification
+  hosts: homelab_nodes
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: "ARR-01: Assert Media & Arr systemd service is active"
+      ansible.builtin.systemd:
+        name: arr
+        state: started
+      check_mode: true
+      register: arr01_service
+      failed_when: arr01_service.status.ActiveState != "active"
+
+    - name: "ARR-01: Assert Stage 1 containers (arr_vpn, arr_qbittorrent, arr_jellyfin) are running with 0 restart loops"
+      # noqa: risky-shell-pipe
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          CONTAINERS=$(docker ps --filter 'name=arr_' --format '{% raw %}{{.Names}}:{{.Status}}{% endraw %}' 2>/dev/null)
+          echo "$CONTAINERS" | grep -q "^arr_vpn:" || exit 1
+          echo "$CONTAINERS" | grep -q "^arr_qbittorrent:" || exit 1
+          echo "$CONTAINERS" | grep -q "^arr_jellyfin:" || exit 1
+          echo "$CONTAINERS" | grep -qi "restarting" && exit 1
+          exit 0
+      changed_when: false
+
+    - name: "ARR-02: Assert arr_vpn exit-node tunnel online, kill-switch active, and external VPN IP != host WAN IP"
+      # noqa: risky-shell-pipe
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          VPN_MODE=$(grep -E '^ARR_VPN_MODE=' /opt/services/arr/.env 2>/dev/null | cut -d= -f2 || echo "tailscale")
+          HOST_IP=$(curl -fsS --max-time 5 https://api.ipify.org)
+          VPN_IP=$(docker exec -u 1000:1001 arr_qbittorrent curl -fsS --max-time 8 https://api.ipify.org)
+          [ -n "$HOST_IP" ] && [ -n "$VPN_IP" ] && [ "$VPN_IP" != "$HOST_IP" ] || exit 1
+          if [ "$VPN_MODE" = "gluetun" ]; then
+            [ "$(docker inspect arr_vpn --format '{% raw %}{{.State.Health.Status}}{% endraw %}')" = "healthy" ] || exit 1
+          else
+            docker exec arr_vpn iptables -C OUTPUT -o eth0 -m owner --uid-owner 1000 -j DROP || exit 1
+            TS_JSON=$(docker exec arr_vpn tailscale status --json | tr -d '\n\r ')
+            echo "$TS_JSON" | grep -q '"BackendState":"Running"' || exit 1
+            echo "$TS_JSON" | grep -qE '"ExitNodeStatus":\{[^}]*"Online":true' || exit 1
+          fi
+      changed_when: false
+
+    - name: "ARR-03: Assert arr_qbittorrent isolated inside arr_vpn network namespace"
+      # noqa: risky-shell-pipe
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          VPN_ID=$(docker inspect arr_vpn --format '{% raw %}{{.Id}}{% endraw %}')
+          NET_MODE=$(docker inspect arr_qbittorrent --format '{% raw %}{{.HostConfig.NetworkMode}}{% endraw %}')
+          NETS=$(docker inspect arr_qbittorrent --format '{% raw %}{{json .NetworkSettings.Networks}}{% endraw %}')
+          [ -n "$VPN_ID" ] && [ "$NET_MODE" = "container:${VPN_ID}" ] || exit 1
+          [ "$NETS" = "{}" ] || [ "$NETS" = "null" ] || exit 1
+      changed_when: false
+
+    - name: "ARR-04: Assert Jellyfin /health endpoint returns HTTP 200"
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ arr_jellyfin_port | default(8096) }}/health"
+        status_code: 200
+        return_content: true
+        timeout: 2
+      register: arr04_jellyfin
+      failed_when:
+        - arr04_jellyfin.status != 200
+        - "'Healthy' not in arr04_jellyfin.content"
+
+    - name: "ARR-04: Assert qBittorrent WebUI returns HTTP 200 on loopback"
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ arr_qbittorrent_webui_port | default(8080) }}"
+        status_code: 200
+        timeout: 2
+      register: arr04_qbittorrent
+      failed_when: arr04_qbittorrent.status != 200
+
+    - name: "ARR-05: Assert loopback port bindings and Caddy 40-arr.caddy internal ingress validation"
+      # noqa: command-instead-of-module risky-shell-pipe
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          PORTS_VPN=$(docker port arr_vpn)
+          PORTS_JF=$(docker port arr_jellyfin)
+          echo "$PORTS_VPN" | grep -q "127.0.0.1:8080" || exit 1
+          echo "$PORTS_JF" | grep -q "127.0.0.1:8096" || exit 1
+          echo "$PORTS_VPN $PORTS_JF" | grep -qE "(0\.0\.0\.0:|\[::\]:)" && exit 1
+          [ -f /etc/caddy/conf.d/40-arr.caddy ] || exit 1
+          grep -q "@internal" /etc/caddy/conf.d/40-arr.caddy || exit 1
+          grep -q "127.0.0.1:8096" /etc/caddy/conf.d/40-arr.caddy || exit 1
+          grep -q "127.0.0.1:8080" /etc/caddy/conf.d/40-arr.caddy || exit 1
+          caddy validate --config /etc/caddy/Caddyfile 2>&1 | grep -qiE "(valid|configuration is valid)" || exit 1
+      changed_when: false
+
+    - name: "ARR-06: Assert Intel UHD 770 iGPU bound with LIBVA_DRIVER_NAME=iHD and AMD GPU isolated"
+      # noqa: risky-shell-pipe
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          COMPOSE="/opt/services/arr/compose.yml"
+          [ -f "$COMPOSE" ] || exit 1
+          grep -q "0000:00:02.0-render" "$COMPOSE" || exit 1
+          grep -q "03:00.0" "$COMPOSE" && exit 1
+          DEVICES=$(docker inspect arr_jellyfin --format '{% raw %}{{json .HostConfig.Devices}}{% endraw %}')
+          ENV_VARS=$(docker inspect arr_jellyfin --format '{% raw %}{{json .Config.Env}}{% endraw %}')
+          echo "$DEVICES" | grep -q "0000:00:02.0-render" || exit 1
+          echo "$DEVICES" | grep -q "03:00.0" && exit 1
+          echo "$ENV_VARS" | grep -q "LIBVA_DRIVER_NAME=iHD" || exit 1
+          exit 0
+      changed_when: false
+
+    - name: "ARR-07: Assert three-tier storage layout, same MergerFS st_dev, and SnapRAID /downloads/ exclusion"
+      # noqa: risky-shell-pipe
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          for d in vpn gluetun qbittorrent jellyfin ersatztv jellyseerr prowlarr radarr sonarr; do
+            [ -d "/opt/services/arr/$d/config" ] || exit 1
+          done
+          mountpoint -q /mnt/scratch && [ -d /mnt/scratch/downloads/incomplete ] || exit 1
+          mountpoint -q /mnt/storage || exit 1
+          [ -d /mnt/storage/downloads/complete ] && [ -d /mnt/storage/media/movies ] && [ -d /mnt/storage/media/tv ] || exit 1
+          [ "$(stat -c '%d' /mnt/storage/downloads/complete /mnt/storage/media/movies /mnt/storage/media/tv | sort -u | wc -l)" = "1" ] || exit 1
+          grep -qE '^exclude[[:space:]]+/downloads/' /etc/snapraid.conf || exit 1
+      changed_when: false
+
+    - name: "ARR-08: Assert unified non-root ownership (1000:1001) and 2775 setgid permissions"
+      # noqa: risky-shell-pipe
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          [ "$(grep -cE '^(PUID=1000|PGID=1001|UMASK=002)$' /opt/services/arr/.env)" -ge 3 ] || exit 1
+          for d in /mnt/scratch/downloads/incomplete /mnt/storage/downloads/complete /mnt/storage/media/movies /mnt/storage/media/tv; do
+            [ "$(stat -c '%a %u:%g' "$d")" = "2775 1000:1001" ] || exit 1
+          done
+      changed_when: false
+
+    - name: "ARR-09: Assert .env mode 0600, .env.example exists, Restic excludes, and 40-arr.sh pre-backup hook"
+      # noqa: risky-shell-pipe
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          [ "$(stat -c '%a' /opt/services/arr/.env)" = "600" ] || exit 1
+          [ -f /opt/services/arr/.env.example ] || exit 1
+          grep -q '/mnt/storage/downloads/\*\*' /etc/homelab/backup-excludes.txt || exit 1
+          grep -q '/mnt/storage/media/movies/\*\*' /etc/homelab/backup-excludes.txt || exit 1
+          [ -x /etc/homelab/backup.d/40-arr.sh ] || exit 1
+          /etc/homelab/backup.d/40-arr.sh pre-backup || exit 1
+          [ -s /opt/services/arr/backups/arr-configs-snapshot.tar.gz ] || exit 1
+      changed_when: false
+
+    - name: "ARR-10: Assert clean journald and container logs free of fatal panics or credential leaks"
+      # noqa: risky-shell-pipe
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          LOGS="$(
+            journalctl -u arr.service --no-pager -n 50 2>&1
+            docker logs --tail 50 arr_vpn 2>&1
+            docker logs --tail 50 arr_qbittorrent 2>&1
+            docker logs --tail 50 arr_jellyfin 2>&1
+          )"
+          echo "$LOGS" | grep -qiE "(fatal error|panic:|segfault)" && exit 1
+          echo "$LOGS" | grep -qE "tskey-auth-[A-Za-z0-9]+" && exit 1
+          exit 0
+      changed_when: false
+
+    - name: Display Phase 5 Media & Arr Stage 1 verification summary
+      ansible.builtin.debug:
+        msg:
+          - "=== Phase 5 Media & Arr Stage 1 Verification Summary ==="
+          - "ARR-01 Service & Containers Active: PASS"
+          - "ARR-02 VPN Exit-Node Tunnel & Kill-Switch IP Isolation: PASS"
+          - "ARR-03 qBittorrent Network Namespace Isolation: PASS"
+          - "ARR-04 Jellyfin /health & qBittorrent WebUI Probes: PASS"
+          - "ARR-05 Loopback Binding & Internal Caddy Ingress: PASS"
+          - "ARR-06 Intel UHD 770 iGPU & AMD Isolation: PASS"
+          - "ARR-07 Three-Tier Storage & SnapRAID Exclusion: PASS"
+          - "ARR-08 Unified Ownership (1000:1001, 2775): PASS"
+          - "ARR-09 Secret Isolation & 40-arr.sh Backup Hook: PASS"
+          - "ARR-10 Structured Telemetry & Redacted Logs: PASS"

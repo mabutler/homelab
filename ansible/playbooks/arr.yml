@@ -1,0 +1,81 @@
+---
+- name: Homelab2 Phase 5 Media & Arr Stack Stage 1 Deployment
+  hosts: homelab_nodes
+  become: true
+  gather_facts: true
+
+  pre_tasks:
+    - name: Verify vault.yml exists on controller
+      ansible.builtin.stat:
+        path: "{{ inventory_dir }}/group_vars/all/vault.yml"
+      register: vault_stat
+      delegate_to: localhost
+      run_once: true
+      tags:
+        - always
+
+    - name: Abort if vault.yml is missing
+      ansible.builtin.fail:
+        msg: >
+          CRITICAL ERROR: '{{ inventory_dir }}/group_vars/all/vault.yml' not found.
+          Copy 'vault.yml.example' to 'vault.yml' and configure required secrets before running.
+      when: not vault_stat.stat.exists
+      delegate_to: localhost
+      run_once: true
+      tags:
+        - always
+
+  roles:
+    - role: docker
+      tags:
+        - docker
+        - containers
+
+    - role: caddy
+      tags:
+        - caddy
+        - network
+        - ingress
+
+    - role: arr
+      tags:
+        - arr
+        - app
+
+  post_tasks:
+    - name: Verify Media & Arr Stack systemd service is active
+      ansible.builtin.systemd:
+        name: arr
+        state: started
+      register: arr_svc_status
+      failed_when: arr_svc_status.status.ActiveState != "active"
+
+    - name: Wait for Jellyfin /health endpoint to return HTTP 200
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ arr_jellyfin_port | default(8096) }}/health"
+        status_code: 200
+        return_content: true
+      register: arr_jellyfin_health
+      until: arr_jellyfin_health.status == 200
+      retries: 30
+      delay: 5
+
+    - name: Wait for qBittorrent WebUI to return HTTP 200
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ arr_qbittorrent_webui_port | default(8080) }}"
+        status_code: 200
+      register: arr_qbittorrent_health
+      until: arr_qbittorrent_health.status == 200
+      retries: 30
+      delay: 5
+
+    - name: Assert Stage 1 health probes succeeded
+      ansible.builtin.assert:
+        that:
+          - arr_jellyfin_health.status == 200
+          - arr_qbittorrent_health.status == 200
+        fail_msg: "Media & Arr Stage 1 health probes failed."
+        success_msg: >
+          Media & Arr Stage 1 deployed and responding healthy on
+          {{ arr_host_bind | default('127.0.0.1') }}:{{ arr_jellyfin_port | default(8096) }} (Jellyfin) and
+          {{ arr_host_bind | default('127.0.0.1') }}:{{ arr_qbittorrent_webui_port | default(8080) }} (qBittorrent).

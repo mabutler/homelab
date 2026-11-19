@@ -108,6 +108,7 @@
       changed_when: false
 
     - name: "STO-04: Assert scratch tier /mnt/scratch isolated from MergerFS branches"
+      # noqa: risky-shell-pipe
       ansible.builtin.shell:
         cmd: "! grep -E '/mnt/storage' /etc/fstab | grep -q '/mnt/scratch' && mountpoint -q /mnt/scratch"
       changed_when: false
@@ -122,6 +123,7 @@
         - opt_services_stat.stat.gr_name != "storage"
 
     - name: "STO-06: Assert storage group GID 1001 and setgid 2775 on /mnt/storage & /mnt/scratch"
+      # noqa: risky-shell-pipe
       ansible.builtin.shell:
         cmd: |
           [ "$(getent group storage | cut -d: -f3)" = "1001" ] || exit 1
@@ -287,6 +289,9 @@
 
 - name: Import Phase 5 Immich Verification Playbook
   ansible.builtin.import_playbook: verify-phase5-immich.yml
+
+- name: Import Phase 5 Media & Arr Stage 1 Verification Playbook
+  ansible.builtin.import_playbook: verify-phase5-arr.yml
 
 - name: Import Feature 007 Antigravity Verification Playbook
   ansible.builtin.import_playbook: verify-phase7-antigravity.yml

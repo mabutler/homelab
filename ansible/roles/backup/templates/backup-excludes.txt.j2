@@ -13,3 +13,27 @@
 {% if '/mnt/storage/media/photos/encoded-video/**' not in backup_exclude_patterns %}
 /mnt/storage/media/photos/encoded-video/**
 {% endif %}
+{% if '/mnt/storage/downloads/**' not in backup_exclude_patterns %}
+/mnt/storage/downloads/**
+{% endif %}
+{% if '/mnt/storage/media/movies/**' not in backup_exclude_patterns %}
+/mnt/storage/media/movies/**
+{% endif %}
+{% if '/mnt/storage/media/tv/**' not in backup_exclude_patterns %}
+/mnt/storage/media/tv/**
+{% endif %}
+{% if '/opt/services/arr/*/config/**/*.db' not in backup_exclude_patterns %}
+/opt/services/arr/*/config/**/*.db
+{% endif %}
+{% if '/opt/services/arr/*/config/**/*.sqlite3' not in backup_exclude_patterns %}
+/opt/services/arr/*/config/**/*.sqlite3
+{% endif %}
+{% if '/opt/services/arr/jellyfin/config/cache/**' not in backup_exclude_patterns %}
+/opt/services/arr/jellyfin/config/cache/**
+{% endif %}
+{% if '/opt/services/arr/jellyfin/config/metadata/**' not in backup_exclude_patterns %}
+/opt/services/arr/jellyfin/config/metadata/**
+{% endif %}
+{% if '/opt/services/arr/jellyfin/config/transcodes/**' not in backup_exclude_patterns %}
+/opt/services/arr/jellyfin/config/transcodes/**
+{% endif %}

@@ -126,6 +126,11 @@
         - immich
         - app
 
+    - role: arr
+      tags:
+        - arr
+        - app
+
     - role: backup
       tags:
         - backup

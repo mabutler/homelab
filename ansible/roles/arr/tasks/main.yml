@@ -1,0 +1,38 @@
+---
+# Main task orchestrator for Media & Arr Stack (Stage 1) role
+
+- name: Include preflight assertions
+  ansible.builtin.include_tasks: preflight.yml
+  tags:
+    - arr
+    - arr_preflight
+
+- name: Include storage layout tasks
+  ansible.builtin.include_tasks: layout.yml
+  tags:
+    - arr
+    - arr_layout
+
+- name: Include configuration tasks
+  ansible.builtin.include_tasks: config.yml
+  tags:
+    - arr
+    - arr_config
+
+- name: Include systemd service tasks
+  ansible.builtin.include_tasks: service.yml
+  tags:
+    - arr
+    - arr_service
+
+- name: Include backup integration tasks
+  ansible.builtin.include_tasks: backup.yml
+  tags:
+    - arr
+    - arr_backup
+
+- name: Include Caddy ingress tasks
+  ansible.builtin.include_tasks: caddy.yml
+  tags:
+    - arr
+    - arr_caddy

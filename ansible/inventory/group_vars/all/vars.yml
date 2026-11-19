@@ -41,7 +41,9 @@ chrony_pool: "2.arch.pool.ntp.org iburst"
 chrony_rtcsync: true
 
 # Disk Diagnostics (smartmontools / smartd)
-smartd_scan_options: "DEVICESCAN -a -o on -S on -s (S/../.././02|L/../../6/03) -H -C 197+ -U 198+ -W 4,45,55 -m <nomailer> -M exec /usr/local/bin/homelab-smartd-alert"
+smartd_scan_options: >-
+  DEVICESCAN -a -o on -S on -s (S/../.././02|L/../../6/03)
+  -H -C 197+ -U 198+ -W 4,45,55 -m <nomailer> -M exec /usr/local/bin/homelab-smartd-alert
 
 # System Safeguards (systemd-oomd & journald)
 oomd_swap_used_limit: "90%"
@@ -114,8 +116,24 @@ immich_domain: "photos"
 immich_service_dir: "/opt/services/immich"
 immich_storage_dir: "/mnt/storage/media/photos"
 
+# Media & Arr Stack - Stage 1 (Phase 5)
+arr_vpn_mode: "tailscale"
+arr_ts_hostname: "fidelacchius-arr-vpn"
+arr_host_bind: "127.0.0.1"
+arr_jellyfin_port: 8096
+arr_qbittorrent_webui_port: 8080
+arr_gluetun_control_port: 8000
+arr_service_dir: "/opt/services/arr"
+arr_scratch_incomplete_dir: "/mnt/scratch/downloads/incomplete"
+arr_storage_root: "/mnt/storage"
+arr_storage_complete_dir: "/mnt/storage/downloads/complete"
+arr_storage_movies_dir: "/mnt/storage/media/movies"
+arr_storage_tv_dir: "/mnt/storage/media/tv"
+arr_puid: 1000
+arr_pgid: 1001
+arr_umask: "002"
+
 # Platform Monitoring & Alerting (Phase 8)
 monitoring_cooldown_sec: 900
 monitoring_disk_warn_pct: 85
 monitoring_disk_crit_pct: 95
-

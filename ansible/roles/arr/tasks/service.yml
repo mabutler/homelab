@@ -1,0 +1,26 @@
+---
+# Systemd service unit management for Media & Arr Stack (Stage 1)
+
+- name: Deploy Media & Arr Stack systemd service unit
+  ansible.builtin.template:
+    src: arr.service.j2
+    dest: /etc/systemd/system/arr.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Reload systemd
+    - Restart arr stack
+  register: arr_unit_file
+
+- name: Force systemd daemon reload if unit file changed
+  # noqa: no-handler
+  ansible.builtin.systemd:
+    daemon_reload: true
+  when: arr_unit_file.changed
+
+- name: Enable and start arr service
+  ansible.builtin.systemd:
+    name: arr
+    state: started
+    enabled: true

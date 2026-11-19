@@ -11,6 +11,7 @@ Resilient, declarative-first personal server platform hosted on bare-metal node 
 - **Phase 5: Application Platform** *(In Progress)*: Containerized service workloads supervised via systemd units and isolated Docker Compose stacks.
   - **Vaultwarden** *(Completed)*: Bitwarden-compatible password manager bound to loopback `127.0.0.1:8088`, exposed publicly via Tailscale Funnel at `https://fidelacchius.fable-mackarel.ts.net` with automated TLS, WebSocket push notifications, transactional SQLite online backups, and client-side encrypted offsite backups to Backblaze B2 bucket `fidelacchius-backups`.
   - **Immich** *(Completed)*: High-performance photo and video management platform (`v1.118.2`) bound to loopback `127.0.0.1:2283`, fronted by Caddy reverse proxy at `photos.{$HOMELAB_DOMAIN:lan}` and `https://photos.fidelacchius.ts.net` with 50GB streaming upload buffers. Configured with two-tier storage (NVMe database/thumbnails and MergerFS library pool with `2775` permissions), Intel UHD 770 iGPU hardware transcoding, transactional PostgreSQL dump backups via `/etc/homelab/backup.d/30-immich.sh`, and Restic offsite synchronization.
+  - **Media & Arr Stack — Stage 1** *(Completed)*: Core household media streaming and VPN-isolated torrent download foundation supervised by `arr.service` at `/opt/services/arr`. Consists of `arr_vpn` (`ghcr.io/tailscale/tailscale:v1.76.6` Tailscale Mullvad / Exit Node WireGuard gateway by default, or optional `gluetun:v3.39.1`, enforced by kernel netfilter `UID 1000` `eth0` `DROP` kill-switch), `arr_qbittorrent` (`lscr.io/linuxserver/qbittorrent:5.0.2` isolated inside `network_mode: "service:vpn"`), and `arr_jellyfin` (`lscr.io/linuxserver/jellyfin:10.10.3` with Intel UHD 770 `iHD` iGPU hardware transcoding). Configured across three storage tiers (NVMe `/opt/services/arr` with Stage 2A/2B/2C config scaffolding, Tier 2 scratch `/mnt/scratch/downloads/incomplete`, and Tier 1 MergerFS `/mnt/storage/{downloads/complete,media/movies,media/tv}` with `2775` `admin:storage` permissions and SnapRAID `/downloads/` exclusion), internal-only Caddy reverse proxy (`/etc/caddy/conf.d/40-arr.caddy`), online SQLite snapshot hook (`/etc/homelab/backup.d/40-arr.sh`), and Restic bulk media exclusions.
 
 ### Port Allocations
 
@@ -19,13 +20,18 @@ Resilient, declarative-first personal server platform hosted on bare-metal node 
 | Caddy Health | 80 | `http://127.0.0.1:80/health` | Local / Ingress health |
 | Vaultwarden | 8088 | `https://fidelacchius.fable-mackarel.ts.net` | Tailscale Funnel / Public HTTPS |
 | Immich Server | 2283 | `photos.{$HOMELAB_DOMAIN:lan}`, `https://photos.fidelacchius.ts.net` | Caddy Reverse Proxy (LAN & Tailscale) |
+| Jellyfin (`arr_jellyfin`) | 8096 | `jellyfin.{$HOMELAB_DOMAIN:lan}` | Caddy Internal-Only Proxy (LAN & Tailscale) |
+| qBittorrent (`arr_qbittorrent` via `arr_vpn`) | 8080 | `qbittorrent.{$HOMELAB_DOMAIN:lan}` | Caddy Internal-Only Proxy (LAN & Tailscale) |
 
 ## Convergence & Verification
 
 ### Convergence Runners
 
 ```powershell
-# From Windows Operator Workstation (Immich):
+# From Windows Operator Workstation (Media & Arr Stage 1):
+./scripts/apply-phase5-arr.ps1 -Host 192.168.4.57 -User admin
+
+# Immich:
 ./scripts/apply-phase5-immich.ps1 -HostAddress 192.168.4.57 -User admin
 
 # Vaultwarden:
@@ -33,7 +39,10 @@ Resilient, declarative-first personal server platform hosted on bare-metal node 
 ```
 
 ```bash
-# From POSIX / Linux / SSH (Immich):
+# From POSIX / Linux / SSH (Media & Arr Stage 1):
+./scripts/apply-phase5-arr.sh --host 192.168.4.57 --user admin
+
+# Immich:
 ./scripts/apply-phase5-immich.sh --host 192.168.4.57 --user admin
 
 # Vaultwarden:
@@ -45,6 +54,9 @@ Resilient, declarative-first personal server platform hosted on bare-metal node 
 ```powershell
 # Run Backup & Staged Disaster Recovery acceptance suite (12-point matrix BK-001 through BK-012):
 ./scripts/verify-phase5-backup.ps1 -TargetHost 192.168.4.57 -User admin
+
+# Run Media & Arr Stage 1 acceptance suite (10-point matrix ARR-01 through ARR-10):
+./scripts/verify-phase5-arr.ps1 -Host 192.168.4.57 -User admin
 
 # Run Immich acceptance test suite (9-point matrix):
 ./scripts/verify-phase5-immich.ps1 -TargetHost 192.168.4.57 -User admin
@@ -59,6 +71,12 @@ sudo ./scripts/verify-phase5-backup.sh
 
 # Run structured JSON report:
 sudo ./scripts/verify-phase5-backup.sh --json
+
+# Run Media & Arr Stage 1 acceptance test suite locally or via SSH:
+./scripts/verify-phase5-arr.sh --local
+
+# Run Media & Arr Stage 1 structured JSON report:
+./scripts/verify-phase5-arr.sh --local --json
 
 # Run Immich acceptance test suite on target host or via SSH:
 ./scripts/verify-phase5-immich.sh

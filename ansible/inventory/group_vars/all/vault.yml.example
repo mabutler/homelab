@@ -41,6 +41,27 @@ vault_frigate_camera_2_rtsp_sub_url: "rtsp://admin:CHANGE_ME_PASSWORD@192.168.4.
 # Immich Photo Management Platform Database Secret (Phase 5)
 immich_db_password: "CHANGE_ME_IN_VAULT"
 
+# Media & Arr Stack Stage 1 VPN Secrets (Phase 5)
+# Tailscale Mullvad / Exit Node mode (default):
+# Generate Auth Key in Tailscale Admin Console -> Settings -> Keys
+vault_arr_tailscale_auth_key: "tskey-auth-CHANGE_ME"
+# Set to "auto" to automatically select the lowest-latency Mullvad exit node via `tailscale exit-node suggest`,
+# or specify a Mullvad / Tailscale exit node hostname or IP (from `tailscale exit-node list`)
+vault_arr_tailscale_exit_node: "auto"
+
+# Optional standalone Gluetun WireGuard / OpenVPN credentials (only if arr_vpn_mode == "gluetun")
+vault_arr_vpn_service_provider: "custom"
+vault_arr_vpn_type: "wireguard"
+vault_arr_vpn_endpoint_ip: ""
+vault_arr_vpn_endpoint_port: "51820"
+vault_arr_vpn_wireguard_public_key: ""
+vault_arr_vpn_wireguard_private_key: ""
+vault_arr_vpn_wireguard_addresses: "10.2.0.2/32"
+vault_arr_vpn_wireguard_preshared_key: ""
+vault_arr_vpn_server_countries: ""
+vault_arr_vpn_openvpn_user: ""
+vault_arr_vpn_openvpn_password: ""
+
 # Platform Monitoring & Alerting (Phase 8)
 # ntfy.sh push notification endpoint and secret topic identifier
 vault_ntfy_server_url: "https://ntfy.sh"

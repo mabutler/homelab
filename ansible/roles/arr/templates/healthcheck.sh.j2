@@ -1,0 +1,56 @@
+#!/bin/sh
+# /opt/services/arr/vpn/healthcheck.sh
+# Managed by Ansible - homelab2
+# Verifies kill-switch rules, Tailscale BackendState, auto/configured exit node selection, and active ExitNodeStatus.Online
+set -eu
+
+QBIT_UID="${PUID:-1000}"
+DESIRED_EXIT_NODE="${TS_EXIT_NODE:-auto}"
+
+# 1. Verify eth0 kill-switch rule is present (re-apply if missing)
+if ! iptables -C OUTPUT -o eth0 -m owner --uid-owner "${QBIT_UID}" -j DROP 2>/dev/null; then
+    /usr/local/bin/arr-vpn-killswitch.sh
+fi
+
+# 2. Query tailscale status --json and verify BackendState == Running
+STATUS_JSON="$(tailscale status --json 2>/dev/null || true)"
+if [ -z "${STATUS_JSON}" ] || ! printf '%s\n' "${STATUS_JSON}" | grep -q '"BackendState": *"Running"'; then
+    iptables -C OUTPUT -o tailscale0 -m owner --uid-owner "${QBIT_UID}" -j DROP 2>/dev/null || \
+        iptables -I OUTPUT 1 -o tailscale0 -m owner --uid-owner "${QBIT_UID}" -j DROP
+    echo "CRITICAL: tailscale daemon not in Running state yet" >&2
+    exit 1
+fi
+
+# 3. If ExitNodeStatus.Online is not true yet, attempt to configure exit node (auto or explicit)
+if ! printf '%s\n' "${STATUS_JSON}" | tr -d '\n\r ' | grep -q '"ExitNodeStatus":{[^}]*"Online":true'; then
+    iptables -C OUTPUT -o tailscale0 -m owner --uid-owner "${QBIT_UID}" -j DROP 2>/dev/null || \
+        iptables -I OUTPUT 1 -o tailscale0 -m owner --uid-owner "${QBIT_UID}" -j DROP
+
+    TARGET_NODE=""
+    if [ -z "${DESIRED_EXIT_NODE}" ] || [ "${DESIRED_EXIT_NODE}" = "auto" ]; then
+        SUGGEST_OUT="$(tailscale exit-node suggest 2>/dev/null || true)"
+        TARGET_NODE="$(printf '%s\n' "${SUGGEST_OUT}" | sed -n 's/.*Suggested exit node: *\([^[:space:]]*\).*/\1/p' | sed 's/\.$//' | head -n 1)"
+        if [ -z "${TARGET_NODE}" ]; then
+            TARGET_NODE="$(tailscale exit-node list 2>/dev/null | awk '/^[[:space:]]*100\./ {print $1; exit}')"
+        fi
+    else
+        TARGET_NODE="${DESIRED_EXIT_NODE}"
+    fi
+
+    if [ -n "${TARGET_NODE}" ]; then
+        tailscale set --exit-node="${TARGET_NODE}" --exit-node-allow-lan-access=true >/dev/null 2>&1 || true
+        STATUS_JSON="$(tailscale status --json 2>/dev/null || true)"
+    fi
+
+    if ! printf '%s\n' "${STATUS_JSON}" | tr -d '\n\r ' | grep -q '"ExitNodeStatus":{[^}]*"Online":true'; then
+        echo "CRITICAL: Tailscale exit node (${TARGET_NODE:-none available yet - grant Mullvad access in Tailscale Admin}) is not online; UID ${QBIT_UID} blocked on tailscale0" >&2
+        exit 1
+    fi
+fi
+
+# 4. Exit node is online -> ensure tailscale0 block is removed so UID 1000 can use exit node
+while iptables -C OUTPUT -o tailscale0 -m owner --uid-owner "${QBIT_UID}" -j DROP 2>/dev/null; do
+    iptables -D OUTPUT -o tailscale0 -m owner --uid-owner "${QBIT_UID}" -j DROP || break
+done
+
+exit 0

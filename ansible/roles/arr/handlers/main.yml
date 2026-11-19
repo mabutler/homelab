@@ -1,0 +1,16 @@
+---
+# Handlers for role arr (Media & Arr Stack - Stage 1)
+
+- name: Reload systemd
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: Restart arr stack
+  ansible.builtin.systemd:
+    name: arr
+    state: restarted
+
+- name: Reload caddy
+  ansible.builtin.systemd:
+    name: caddy
+    state: restarted

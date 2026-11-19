@@ -245,3 +245,62 @@ sudo docker compose -f /opt/services/immich/compose.yml logs -f
 # Run acceptance verification with structured JSON output
 ./scripts/verify-phase5-immich.sh --json
 ```
+
+---
+
+## 7. Media & Arr Stack (Stage 1)
+
+### 7.1 Architecture & Tailscale Mullvad / Exit Node Isolation
+
+Stage 1 of the Media & Arr Stack runs at `/opt/services/arr` under systemd supervision (`arr.service`), deploying three pinned containers:
+- **`arr_vpn`** (`ghcr.io/tailscale/tailscale:v1.76.6` when `arr_vpn_mode: "tailscale"`, or `ghcr.io/qdm12/gluetun:v3.39.1` in `"gluetun"` mode): Dedicated WireGuard VPN gateway authenticating as `fidelacchius-arr-vpn` so the host `tailscaled` daemon (which serves Vaultwarden Tailscale Funnel on `100.103.39.60:443`) remains unaffected. Enforces a kernel netfilter (`iptables`/`ip6tables`) `UID 1000` `eth0` `DROP` kill-switch (`/opt/services/arr/vpn/killswitch.sh`) and exit-node healthcheck (`/opt/services/arr/vpn/healthcheck.sh`).
+- **`arr_qbittorrent`** (`lscr.io/linuxserver/qbittorrent:5.0.2`): Runs as `PUID=1000`, `PGID=1001` inside `network_mode: "service:vpn"`, ensuring 100% of peer traffic traverses the VPN tunnel with zero host WAN egress.
+- **`arr_jellyfin`** (`lscr.io/linuxserver/jellyfin:10.10.3`): Serves `/mnt/storage/media/{movies,tv}` using Intel Alder Lake-S UHD Graphics 770 (`00:02.0-render`, `LIBVA_DRIVER_NAME=iHD`), while keeping the discrete AMD GPU isolated.
+
+### 7.2 Tailscale Admin Console Mullvad Setup & Subnet Routing
+
+1. **Grant Mullvad Exit Node Access**:
+   - In **Tailscale Admin Console -> Access Controls**, define `tag:arr-vpn` under `tagOwners` and grant `"attr": ["mullvad"]` under `nodeAttrs` for `["tag:arr-vpn", "autogroup:member"]` (or toggle the Mullvad device slot directly under **Tailscale Admin Console -> Mullvad VPN** for `fidelacchius-arr-vpn`).
+2. **Generate Auth Key & Select Exit Node**:
+   - In **Tailscale Admin Console -> Settings -> Keys**, generate a reusable auth key (tagged `tag:arr-vpn`) and discover an exit node via `tailscale exit-node list` (e.g., `us-nyc-wg-301.mullvad.ts.net`).
+   - Populate `vault_arr_tailscale_auth_key` and `vault_arr_tailscale_exit_node` in `ansible/inventory/group_vars/all/vault.yml` (gitignored; see `vault.yml.example`).
+3. **Enable Host Subnet Routing (Remote Access to Internal Services)**:
+   - Caddy binds to `127.0.0.1` and `192.168.4.57` (`/etc/caddy/conf.d/40-arr.caddy` restricts `jellyfin.lan` and `qbittorrent.lan` to `@internal` subnets `127.0.0.0/8`, `192.168.4.0/24`, `100.64.0.0/10`, `::1`, returning `403` otherwise).
+   - To reach `https://jellyfin.lan` and `https://qbittorrent.lan` from remote Tailscale devices, advertise the LAN subnet on `fidelacchius` and approve it in Tailscale Admin Console:
+     ```bash
+     sudo tailscale set --advertise-routes=192.168.4.0/24
+     ```
+
+### 7.3 Convergence & Initial Service Onboarding
+
+```bash
+# Converge locally on fidelacchius
+./scripts/apply-phase5-arr.sh --local
+
+# Or from operator workstation
+./scripts/apply-phase5-arr.sh --host 192.168.4.57 --user admin
+```
+
+1. **Jellyfin Onboarding** (`https://jellyfin.lan`):
+   - Complete the Startup Wizard, add **Movies** (`/mnt/storage/media/movies`) and **Shows** (`/mnt/storage/media/tv`), and under **Dashboard -> Playback -> Transcoding**, set hardware acceleration to **Intel QuickSync (QSV)** or **VAAPI** using `/dev/dri/renderD128`.
+2. **qBittorrent Onboarding** (`https://qbittorrent.lan`):
+   - Retrieve the initial temporary password:
+     ```bash
+     sudo docker logs arr_qbittorrent 2>&1 | grep -i "temporary password"
+     ```
+   - Set a permanent WebUI password in **Tools -> Options -> Web UI**, confirm **Default Save Path** is `/mnt/storage/downloads/complete`, and confirm **Keep incomplete torrents in** is `/mnt/scratch/downloads/incomplete`.
+
+### 7.4 Backup, Restore & Acceptance Verification
+
+- **Online SQLite & Config Backup Hook (`/etc/homelab/backup.d/40-arr.sh`)**:
+  - `pre-backup`: Captures `VACUUM INTO` + `PRAGMA integrity_check` SQLite snapshots and `arr-configs-snapshot.tar.gz` (`0640`) under `/opt/services/arr/backups/`. Bulk media, downloads, live DBs, and Jellyfin `cache/`, `metadata/`, and `transcodes/` are excluded in `/etc/homelab/backup-excludes.txt`, and `/downloads/` is excluded from SnapRAID parity in `/etc/snapraid.conf`.
+  - `post-restore`: Restores configs and missing SQLite databases while enforcing `0600` on `.env`, `0700` on `vpn/config`, and `1000:1001` ownership:
+    ```bash
+    sudo /etc/homelab/backup.d/40-arr.sh pre-backup
+    sudo /etc/homelab/backup.d/40-arr.sh post-restore
+    ```
+- **Automated 10-Point Acceptance Suite (`ARR-01` through `ARR-10`)**:
+  ```bash
+  ./scripts/verify-phase5-arr.sh --local
+  ./scripts/verify-phase5-arr.sh --local --json
+  ```
